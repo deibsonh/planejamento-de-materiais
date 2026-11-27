@@ -1,6 +1,11 @@
 export type Scope = { supplier: string; material: string };
 export type Profile = { email: string; name: string; role: 'internal' | 'supplier' | 'carrier'; scopes: Scope[] };
-export type Material = { id: string; name: string; unit: string };
+export const MATERIAL_TYPES = [
+  'Cimento','Pedra','Areia','Aditivo','Sílica','Coque','CA-50','CA-60',
+  'Desmoldante','Combustível','Madeira','Arruela','Outro'
+] as const;
+export type MaterialType = typeof MATERIAL_TYPES[number];
+export type Material = { id: string; name: string; unit: string; type?: MaterialType };
 export type SupplierDetails = { code: string; responsible: string; email: string; contact: string };
 export type Entry = Scope & { id: string; date: string; quantity: number; canceled?: boolean; closed?: boolean };
 export type Shipment = Scope & { id: string; date: string; arrival: string; quantity: number; unit: string; nf: string; author: string; converted?: number; duplicateOf?: string };

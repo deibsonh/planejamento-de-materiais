@@ -30,11 +30,15 @@ const nonce = (month:string, diff:number) => {
   const [y,m] = month.split('-').map(Number);
   return new Date(Date.UTC(y,m-1+diff,1)).toISOString().slice(0,7);
 };
-function status(e:Entry, actual:number) {
-  if (e.canceled) return ['Cancelado','gray'];
-  if (e.closed || actual >= e.quantity) return ['Encerrado','green'];
-  if (actual > 0) return ['Parcial','amber'];
-  return ['Pendente','blue'];
+const planningStatuses = {
+  Pendente:'blue', Parcial:'amber', Encerrado:'green', Cancelado:'gray'
+} as const;
+const weekdayFormatter = new Intl.DateTimeFormat('pt-BR',{weekday:'short',timeZone:'UTC'});
+function status(e:Entry, actual:number): keyof typeof planningStatuses {
+  if (e.canceled) return 'Cancelado';
+  if (e.closed || actual >= e.quantity) return 'Encerrado';
+  if (actual > 0) return 'Parcial';
+  return 'Pendente';
 }
 function Badge({label,tone}:{label:string;tone:string}) {
   return <span className={'badge '+tone}><i/>{label}</span>;
@@ -80,6 +84,7 @@ export default function Workspace() {
   const [tab,setTab] = useState<Tab>('Visão geral');
   const [query,setQuery] = useState('');
   const [filter,setFilter] = useState('');
+  const [statusFilter,setStatusFilter] = useState('Pendente');
   const [showFilters,setShowFilters] = useState(false);
   const [operation,setOperation] = useState<Operation|null>(null);
   const [toast,setToast] = useState('');
@@ -118,10 +123,10 @@ export default function Workspace() {
     const refreshed = await reload();
     if (!refreshed.profile || (state?.profile?.role==='internal' && refreshed.profile.role!=='internal')) go('Visão geral');
     const deleted = ['deleteMaterial','deleteSupplier','deleteConversion'].some(action=>action===input.action);
-    setToast(deleted?'Registro excluído com sucesso.':'Alteração salva com sucesso.');
+    setToast(deleted?'Registro excluído com sucesso.':input.action==='entryMonth'?'Programação salva com sucesso.':'Alteração salva com sucesso.');
   }
 
-  function go(next:Tab) {setTab(next);setQuery('');setFilter('');setShowFilters(false);setMobile(false);setMenuId('');}
+  function go(next:Tab) {setTab(next);setQuery('');setFilter('');setStatusFilter('Pendente');setShowFilters(false);setMobile(false);setMenuId('');}
   async function access(email:string,password?:string) {
     const response = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
     const result = await response.json();
@@ -201,30 +206,41 @@ export default function Workspace() {
   ];
   const matching = (e: {material:string;supplier:string}) => (!filter || filter===e.material) &&
     (!query || [materials.get(e.material)?.name || '',e.material,e.supplier].join(' ').toLocaleLowerCase('pt-BR').includes(query.trim().toLocaleLowerCase('pt-BR')));
-  const ordered = (tab==='Visão geral' ? entries : selectedMonth).filter(matching).sort((a,b)=>a.date.localeCompare(b.date));
+  const planning = tab==='Programação';
+  const ordered = (planning ? selectedMonth : entries).filter(matching)
+    .map(entry=>({entry,actual:received(data,entry.id)}))
+    .map(row=>({...row,label:status(row.entry,row.actual)}))
+    .filter(row=>!planning || !statusFilter || row.label===statusFilter)
+    .sort((a,b)=>a.entry.date.localeCompare(b.entry.date));
   const visibleEntries = tab==='Visão geral' ? ordered.slice(0,6) : ordered;
   const calendar = data.calendars[month] || defaultCalendar;
   const work = workdays(month,calendar);
   const monthVersions = data.publications.filter(p=>p.month===month).slice().reverse();
   const profileInitials = profile.role==='internal' ? 'RO' : profile.name.slice(0,2).toUpperCase();
   const primaryTitle = internal ? 'Nova programação':'Registrar envio';
-  const primary = ()=>setOperation({kind:internal?'entry':'shipment'});
+  const primary = ()=>setOperation({kind:internal?'entryMonth':'shipment'});
   function toolbar() {
     return <div className="tools"><div className="search"><Search size={16}/><input aria-label="Buscar material ou fornecedor" placeholder="Buscar material ou fornecedor…" value={query} onChange={e=>setQuery(e.target.value)}/></div>
-      <button className={'button '+(showFilters||filter?'selected':'')} onClick={()=>setShowFilters(!showFilters)}><SlidersHorizontal size={15}/> Filtros</button>
-      {showFilters && <select aria-label="Filtrar material" value={filter} onChange={e=>setFilter(e.target.value)}><option value="">Todos os materiais</option>{data?.materials.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select>}
+      {planning ? <label className="planning-filter">Situação<select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+        <option value="">Todas</option>{Object.keys(planningStatuses).map(label=><option key={label}>{label}</option>)}
+      </select></label> :
+        <button className={'button '+(showFilters||filter?'selected':'')} onClick={()=>setShowFilters(!showFilters)}><SlidersHorizontal size={15}/> Filtros</button>}
+      {(planning || showFilters) && <label className={planning?'planning-filter':undefined}>
+        {planning && 'Material'}
+        <select aria-label={planning?undefined:'Filtrar material'} value={filter} onChange={e=>setFilter(e.target.value)}>
+          <option value="">Todos os materiais</option>{Array.from(materials.values(),m=><option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+      </label>}
     </div>;
   }
   function planningTable() {
-    return <Table columns={['Data prevista','Material','Fornecedor','Programado','Recebido','Saldo','Situação',...(internal?['']:[])]} empty={!visibleEntries.length}>
-      {visibleEntries.map(e=>{
-        const actual = received(data!,e.id);
-        const [label,tone] = status(e,actual);
+    return <Table columns={[planning?'Entrega':'Data prevista','Material','Fornecedor','Programado','Recebido','Saldo','Situação',...(internal?['']:[])]} empty={!visibleEntries.length}>
+      {visibleEntries.map(({entry:e,actual,label})=>{
         const material=materials.get(e.material);
-        return <tr key={e.id}><td className="date-cell">{dateLabel(e.date)}</td><td><div className="material-cell"><span className="material-icon"><Package size={15}/></span><div><strong>{material?.name || e.material}</strong><small>{e.material}</small></div></div></td>
+        return <tr key={e.id}><td className="date-cell"><time dateTime={e.date}>{dateLabel(e.date)}{planning&&<small>{weekdayFormatter.format(new Date(e.date)).slice(0,3)}</small>}</time></td><td><div className="material-cell"><span className="material-icon"><Package size={15}/></span><div><strong>{material?.name || e.material}</strong><small>{e.material}</small></div></div></td>
           <td>{e.supplier}</td><td><strong>{fmt(e.quantity)}</strong> <span className="muted">{material?.unit}</span></td>
           <td>{actual ? <><strong>{fmt(actual)}</strong> <span className="muted">{material?.unit}</span></> : <span className="muted">{blank}</span>}</td>
-          <td>{e.canceled || e.closed ? blank : fmt(Math.max(0,round(e.quantity-actual)))}</td><td><Badge label={label} tone={tone}/></td>
+          <td>{e.canceled || e.closed ? blank : fmt(Math.max(0,round(e.quantity-actual)))}</td><td><Badge label={label} tone={planningStatuses[label]}/></td>
           {internal && <td className="row-actions"><button className="icon-button" aria-label="Ações da programação" onClick={event=>{
             const rect = event.currentTarget.getBoundingClientRect();
             setMenuPosition({top:Math.min(rect.bottom,window.innerHeight-119),right:window.innerWidth-rect.right});
@@ -310,9 +326,9 @@ export default function Workspace() {
                 <Plus size={16} aria-hidden="true"/> Novo material
               </button>
             </div>
-            <Table columns={['Código','Material','Unidade','Ações']} empty={!data.materials.length}>
+            <Table columns={['Código','Material','Tipo','Unidade','Ações']} empty={!data.materials.length}>
               {data.materials.map(m=><tr key={m.id}>
-                <td>{m.id}</td><td><strong>{m.name}</strong></td><td>{m.unit}</td>
+                <td>{m.id}</td><td><strong>{m.name}</strong></td><td>{m.type ?? 'Sem tipo definido'}</td><td>{m.unit}</td>
                 <td><CatalogActions operation={{kind:'material',id:m.id}} label={`material ${m.name} (${m.id})`} onOpen={setOperation}/></td>
               </tr>)}
             </Table>

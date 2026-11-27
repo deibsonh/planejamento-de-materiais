@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { allowed, catalogUnit, defaultCalendar, getSupplierDetails, received, round, type Data, type Profile, type Scope, type Allocation, type Conversion, type SupplierDetails } from './model';
+import { allowed, catalogUnit, defaultCalendar, getSupplierDetails, MATERIAL_TYPES, received, round, type Data, type Profile, type Scope, type Allocation, type Conversion, type SupplierDetails } from './model';
 import { demo, isConfiguredAdmin, UserError } from './server';
 type Input = Record<string, unknown>;
 const value = (input:Input,key:string) => typeof input[key] === 'string' ? String(input[key]).trim() : '';
@@ -96,6 +96,25 @@ export function apply(data:Data,profile:Profile,input:Input) {
       }
       break;
     }
+    case 'entryMonth': {
+      const item = scope(data,input,profile);
+      const selected = month(input);
+      need(Array.isArray(input.days) && input.days.length > 0 && input.days.length <= 31,'Informe as quantidades dos dias do mês.');
+      const seen = new Set<string>();
+      const entries = input.days.map((day:unknown)=>{
+        need(day && typeof day === 'object' && !Array.isArray(day),'Informe um dia válido.');
+        const fields = day as Input;
+        const plannedDate = date(fields,'date');
+        need(plannedDate.startsWith(selected+'-') && !seen.has(plannedDate),'Use dias distintos do mês selecionado.');
+        seen.add(plannedDate);
+        const quantity = round(number(fields,'quantity'));
+        need(quantity > 0,'Informe uma quantidade de pelo menos 0,001.');
+        return {...item,id:randomUUID(),date:plannedDate,quantity};
+      });
+      data.entries.push(...entries);
+      log = `Incluiu programação de ${item.material} / ${item.supplier} em ${selected} · ${entries.length} dia(s)`;
+      break;
+    }
     case 'cancel': {
       const entry = data.entries.find(e => e.id === value(input,'id'));
       need(entry && !entry.canceled && !entry.closed && received(data,entry.id) < entry.quantity,'Linha indisponível para cancelamento.');
@@ -168,7 +187,12 @@ export function apply(data:Data,profile:Profile,input:Input) {
       need(!data.materials.some(m=>m.id===code && m!==previous),'Já existe um material com esse código.');
       const name = required(input,'name','o material');
       const unit = registeredUnit(input,previous?.unit);
-      const material = {id:code,name,unit};
+      const requestedType = value(input,'type');
+      const selectedType = MATERIAL_TYPES.find(type=>type===requestedType);
+      need(input.type === undefined || input.type === '' || selectedType,'Selecione um tipo de material válido.');
+      const type = selectedType ?? previous?.type;
+      const material = {id:code,name,unit,type};
+      const description = `${code} · ${name} (${unit})${type ? ' · '+type : ''}`;
       if (previous) {
         if (!sameUnit(previous.unit,unit)) {
           need(!usedInOperations(data,'material',key),'A unidade deste material está vinculada a quantidades registradas na programação, em envios ou em recebimentos.');
@@ -176,10 +200,10 @@ export function apply(data:Data,profile:Profile,input:Input) {
         }
         renameReferences(data,'material',key,code);
         data.materials = data.materials.map(m=>m===previous ? material : m);
-        log = `Alterou material ${previous.id} · ${previous.name} (${previous.unit}) → ${code} · ${name} (${unit})`;
+        log = `Alterou material ${previous.id} · ${previous.name} (${previous.unit})${previous.type ? ' · '+previous.type : ''} → ${description}`;
       } else {
         data.materials = [...data.materials,material];
-        log = `Cadastrou material ${code} · ${name} (${unit})`;
+        log = `Cadastrou material ${description}`;
       }
       break;
     }

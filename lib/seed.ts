@@ -2,9 +2,9 @@ import { type Data, type Entry } from './model';
 export const demoMonth = '2026-12';
 export function initialData(demo: boolean): Data {
   const data: Data = {
-    materials:[{id:'52.301',name:'Cimento granel',unit:'kg'},{id:'22.829',name:'Brita 0',unit:'kg'},
-      {id:'21.275',name:'Brita 1',unit:'kg'},{id:'56.157',name:'Areia fina',unit:'m³'},
-      {id:'20.014',name:'Areia média',unit:'m³'},{id:'99.012',name:'Carvão coque',unit:'kg'}],
+    materials:[{id:'52.301',name:'Cimento granel',type:'Cimento',unit:'kg'},{id:'22.829',name:'Brita 0',type:'Pedra',unit:'kg'},
+      {id:'21.275',name:'Brita 1',type:'Pedra',unit:'kg'},{id:'56.157',name:'Areia fina',type:'Areia',unit:'m³'},
+      {id:'20.014',name:'Areia média',type:'Areia',unit:'m³'},{id:'99.012',name:'Carvão coque',type:'Coque',unit:'kg'}],
     suppliers:['CSN','Said','Carrascoza','CRS','Itaporanga','Belluno'],
     entries:[], shipments:[], receipts:[], conversions:[], profiles:[], calendars:{}, publications:[], history:[]
   };

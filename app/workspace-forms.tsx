@@ -1,10 +1,10 @@
 'use client';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, Plus, Trash2, X } from 'lucide-react';
-import { allowed, catalogUnit, dateLabel, defaultCalendar, fmt, getSupplierDetails, monthLabel, received, REGISTERED_UNITS, round, type Data, type Profile, type Scope } from '@/lib/model';
+import { allowed, calendarDays, catalogUnit, dateLabel, defaultCalendar, fmt, getSupplierDetails, MATERIAL_TYPES, monthLabel, received, REGISTERED_UNITS, round, type Data, type Profile, type Scope } from '@/lib/model';
 
 const titles = {
-  entry:'Nova programação', receipt:'Registrar recebimento', shipment:'Registrar envio', cancel:'Cancelar programação',
+  entry:'Editar programação', entryMonth:'Nova programação', receipt:'Registrar recebimento', shipment:'Registrar envio', cancel:'Cancelar programação',
   material:'Novo material', supplier:'Novo fornecedor', conversion:'Cadastrar conversão', profile:'Configurar perfil',
   calendar:'Calendário do mês', publish:'Salvar versão da programação', duplicate:'Vincular envios',
   receiptDetails:'Detalhes do recebimento', revoke:'Revogar acesso', resetPassword:'Redefinir senha'
@@ -55,6 +55,7 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
   const existingConversion = kind==='conversion' && previousScope ? data.conversions.find(c=>c.supplier===previousScope.supplier&&c.material===previousScope.material) : undefined;
   const initialScope = kind==='conversion' ? previousScope : initial;
   const calendar = data.calendars[month] || defaultCalendar;
+  const planningDays = kind==='entryMonth' ? calendarDays(month) : [];
   const [supplier,setSupplier] = useState(initialScope?.supplier || '');
   const [material,setMaterial] = useState(initialScope?.material || '');
   const [unit,setUnit] = useState('');
@@ -77,9 +78,9 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
   const distributed = round(allocations.reduce((sum,a)=>sum+(parseQuantity(a.amount)||0),0));
   const available = data.entries.filter(e=>e.supplier===supplier && e.material===material && !e.canceled && !e.closed && received(data,e.id)<e.quantity).sort((a,b)=>a.date.localeCompare(b.date));
   const shipmentOptions = data.shipments.filter(s=>s.supplier===supplier&&s.material===material&&!s.duplicateOf);
-  const kindsWithScope = ['receipt','entry','shipment','conversion'];
+  const kindsWithScope = ['receipt','entry','entryMonth','shipment','conversion'];
   const scoped = !deleting && kindsWithScope.includes(kind);
-  const title = catalog && deleting ? catalog.deleteTitle : catalog && (id || previousScope) ? catalog.editTitle : kind==='entry'&&initial ? 'Editar programação' : kind==='profile'&&existingProfile ? 'Editar perfil' : titles[kind];
+  const title = catalog && deleting ? catalog.deleteTitle : catalog && (id || previousScope) ? catalog.editTitle : kind==='profile'&&existingProfile ? 'Editar perfil' : titles[kind];
   const catalogName = kind==='material' && existingMaterial ? `${existingMaterial.name} (${existingMaterial.id})` :
     kind==='supplier' ? id : previousScope && `${previousScope.supplier} / ${data.materials.find(m=>m.id===previousScope.material)?.name ?? previousScope.material}`;
   const readonly = kind==='receiptDetails';
@@ -100,6 +101,21 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
     const input:Record<string,unknown> = {...form,action:deleting && catalog ? catalog.deleteAction : kind,id,month,requestId:requestId.current};
     if (scoped) Object.assign(input,{supplier,material});
     if (kind==='entry') input.quantity = parseQuantity(String(form.quantity));
+    if (kind==='entryMonth') {
+      const days = planningDays.flatMap(({iso})=>{
+        const raw = String(form[iso] ?? '').trim();
+        delete input[iso];
+        if (!raw) return [];
+        const quantity = parseQuantity(raw);
+        return quantity===0 ? [] : [{date:iso,quantity}];
+      });
+      const invalid = days.find(({quantity})=>!Number.isFinite(quantity) || round(quantity)<0.001 || quantity>1e10);
+      if (invalid || !days.length) {
+        setError(invalid ? 'Informe uma quantidade válida para '+dateLabel(invalid.date)+'.' : 'Informe a quantidade de pelo menos um dia.');
+        return;
+      }
+      input.days = days;
+    }
     if (kind==='conversion' && !deleting) {
       input.factor = parseQuantity(String(form.factor));
       if (previousScope) Object.assign(input,{previousSupplier:previousScope.supplier,previousMaterial:previousScope.material});
@@ -118,7 +134,7 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
     catch(error){setError(error instanceof Error ? error.message:'Não foi possível salvar.');}
     finally{setSaving(false);}
   }
-  return <dialog ref={dialog} className="dialog" aria-labelledby="operation-title" onCancel={e=>{e.preventDefault();if(!saving)onClose();}} onClick={e=>{if(e.target===dialog.current&&!saving)onClose();}}>
+  return <dialog ref={dialog} className={kind==='entryMonth'?'dialog planning-dialog':'dialog'} aria-labelledby="operation-title" onCancel={e=>{e.preventDefault();if(!saving)onClose();}} onClick={e=>{if(e.target===dialog.current&&!saving)onClose();}}>
     <form className="dialog-content" onSubmit={submit}>
       <div className="dialog-head"><h2 id="operation-title">{title}</h2><button type="button" className="icon-button" aria-label="Fechar" disabled={saving} onClick={onClose}><X size={20}/></button></div>
       <div className="form-content">
@@ -126,6 +142,20 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
           <Field label="Fornecedor"><select value={supplier} required onChange={e=>changeScope(e.target.value,'')}><option value="">Selecione</option>{data.suppliers.filter(s=>profile.role==='internal'||profile.scopes.some(p=>p.supplier===s)).map(s=><option key={s}>{s}</option>)}</select></Field>
           <Field label="Material"><select value={material} required onChange={e=>changeScope(supplier,e.target.value)}><option value="">Selecione</option>{data.materials.filter(m=>allowed(profile,{supplier,material:m.id})).map(m=><option key={m.id} value={m.id}>{m.name} · {m.id}</option>)}</select></Field>
         </div>}
+        {kind==='entryMonth'&&<fieldset className="planning-calendar" disabled={!supplier || !chosen || saving}>
+          <legend>{monthLabel(month)}{chosen ? ' · '+chosen.unit : ''}</legend>
+          <p className="info">{supplier && chosen ? 'Preencha os dias em que deseja programar entregas.' : 'Selecione o fornecedor e o material para preencher as quantidades.'}</p>
+          <div className="planning-scroll">
+            <div className="planning-grid">
+              {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(day=><span key={day} className="planning-weekday" aria-hidden="true">{day}</span>)}
+              {planningDays.map(({iso,day,weekday})=><label key={iso} className="planning-day"
+                style={day===1 ? {gridColumnStart:weekday+1} : undefined}>
+                <span>{day}</span>
+                <input name={iso} inputMode="decimal" maxLength={18} placeholder="—" aria-label={`Quantidade em ${dateLabel(iso)}${chosen ? ' ('+chosen.unit+')' : ''}`}/>
+              </label>)}
+            </div>
+          </div>
+        </fieldset>}
         {kind==='entry'&&<div className="form-grid"><Field label="Data prevista"><Input name="date" type="date" initial={initial?.date || month+'-01'}/></Field><Field label={chosen?'Quantidade programada ('+chosen.unit+')':'Quantidade programada'}><Quantity initial={initial?.quantity}/></Field></div>}
         {(kind==='receipt'||kind==='shipment')&&<>
           <div className="form-grid">
@@ -160,7 +190,11 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
         {kind==='material'&&!deleting&&<div className="form-grid">
           <Field label="Código"><Input name="code" placeholder="20.014" initial={existingMaterial?.id}/></Field>
           <Field label="Unidade"><CatalogUnitSelect initial={existingMaterial?.unit}/></Field>
-          <Field label="Nome do material" wide><Input name="name" placeholder="Areia média" initial={existingMaterial?.name}/></Field>
+          <Field label="Nome do material"><Input name="name" placeholder="Areia média" initial={existingMaterial?.name}/></Field>
+          <Field label="Tipo de material"><select name="type" defaultValue={existingMaterial?.type ?? ''} required={!existingMaterial || Boolean(existingMaterial.type)}>
+            <option value="" disabled={!existingMaterial || Boolean(existingMaterial.type)}>{existingMaterial && !existingMaterial.type ? 'Sem tipo definido' : 'Selecione'}</option>
+            {MATERIAL_TYPES.map(type=><option key={type}>{type}</option>)}
+          </select></Field>
         </div>}
         {kind==='supplier'&&!deleting&&<div className="form-grid">
           <Field label="Código"><Input name="code" initial={existingSupplier?.code} optional/></Field>
@@ -220,7 +254,7 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
         {error&&<div className="form-error" role="alert">{error}</div>}
       </div>
       <div className="dialog-footer"><button type="button" className="button" disabled={saving} onClick={onClose}>{readonly?'Fechar':'Voltar'}</button>
-        {!readonly&&<button type="submit" className="button primary" disabled={saving}>{deleting ? saving?'Excluindo…':'Confirmar exclusão' : saving?'Salvando…':kind==='cancel'?'Cancelar programação':kind==='revoke'?'Revogar acesso':'Salvar registro'}</button>}</div>
+        {!readonly&&<button type="submit" className="button primary" disabled={saving}>{deleting ? saving?'Excluindo…':'Confirmar exclusão' : saving?'Salvando…':kind==='cancel'?'Cancelar programação':kind==='revoke'?'Revogar acesso':kind==='entryMonth'?'Salvar programação':'Salvar registro'}</button>}</div>
     </form>
   </dialog>;
 }
