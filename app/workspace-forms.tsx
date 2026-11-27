@@ -182,13 +182,13 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
             <Field label="E-mail autorizado" wide><Input name="email" type="email" initial={existingProfile?.email} placeholder="contato@empresa.com.br"/></Field>
             {!demo&&!existingProfile&&<Field label="Senha temporária" wide><input name="password" type="password" autoComplete="new-password" minLength={12} maxLength={128} required/></Field>}
           </div>
-          {role!=='internal'&&<div className="allocation"><div className="allocation-title"><div><h3>Permissões</h3><p>Informe os materiais de cada fornecedor que o perfil pode acessar.</p></div></div>
+          {role!=='internal'&&<div className="allocation"><div className="allocation-title"><div><h3>Permissões</h3><p>Adicione uma permissão para cada combinação de fornecedor e material que o perfil pode acessar.</p></div></div>
             {scopes.map((s,i)=><div key={i} className="form-grid allocation-grid">
               <Field label="Fornecedor"><select required value={s.supplier} onChange={e=>setScopes(scopes.map((other,j)=>j===i?{...other,supplier:e.target.value}:other))}><option value="">Selecione</option>{data.suppliers.map(s=><option key={s}>{s}</option>)}</select></Field>
               <Field label="Material"><select required value={s.material} onChange={e=>setScopes(scopes.map((other,j)=>j===i?{...other,material:e.target.value}:other))}><option value="">Selecione</option>{data.materials.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></Field>
               {scopes.length>1&&<button type="button" className="icon-button danger" aria-label="Remover permissão" onClick={()=>setScopes(scopes.filter((_,j)=>i!==j))}><Trash2 size={17}/></button>}
             </div>)}
-            <button type="button" className="text-button" onClick={()=>setScopes([...scopes,{supplier:role==='supplier'?scopes[0].supplier:'',material:''}])}><Plus size={15}/> Adicionar permissão</button>
+            <button type="button" className="text-button" onClick={()=>setScopes([...scopes,{supplier:'',material:''}])}><Plus size={15}/> Adicionar permissão</button>
           </div>}
         </>}
         {kind==='calendar'&&<div className="form-grid">

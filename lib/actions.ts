@@ -270,7 +270,6 @@ export function apply(data:Data,profile:Profile,input:Input) {
       need(role === 'supplier' || role === 'carrier' || role === 'internal','Selecione um tipo de acesso.');
       const scopes = role !== 'internal' && Array.isArray(input.scopes) ? input.scopes.map(item=>scope(data,item,profile)) : [];
       need(role === 'internal' || scopes.length,'Selecione pelo menos uma combinação de fornecedor e material.');
-      need(role !== 'supplier' || new Set(scopes.map(s=>s.supplier)).size === 1,'Um perfil de fornecedor deve pertencer a um único fornecedor.');
       const name = required(input,'name','o nome do perfil');
       const updated:Profile = {email,name,role,scopes};
       if (previous) {
