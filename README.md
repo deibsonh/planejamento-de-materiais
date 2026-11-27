@@ -15,14 +15,11 @@ Abra http://localhost:3000. Sem Supabase configurado, o servidor de desenvolvime
 
 ## Configuração para hospedagem
 
-1. Crie um projeto no Supabase. Execute [supabase/setup.sql](supabase/setup.sql) no SQL Editor para criar a tabela e restringir o acesso ao servidor.
+1. Crie ou abra o projeto Supabase e execute [supabase/setup.sql](supabase/setup.sql) no SQL Editor. Execute o script novamente em instalações existentes para adicionar o controle de tentativas de login.
+2. Configure as variáveis de [.env.example](.env.example) na hospedagem. Use `ADMIN_EMAIL` e `ADMIN_PASSWORD` para definir a conta administradora. Gere `AUTH_SESSION_SECRET` com `openssl rand -hex 32` e mantenha o segredo e a chave de serviço exclusivamente no servidor. Defina `SITE_URL` com a origem HTTPS e `DEMO_MODE=false`.
+3. Na Vercel, importe o projeto como Next.js e publique. Para reproduzir o build localmente, use `npm run build` e `npm start`.
+4. Entre com a conta administradora e abra **Perfis de acesso** para cadastrar e-mails e senhas temporárias. Entregue as senhas diretamente aos titulares. Cada pessoa escolhe uma nova senha no primeiro acesso. Quando alguém perder a senha, use **Redefinir senha** no perfil para emitir outra temporária. A redefinição invalida as sessões anteriores. Para mudar a senha da própria conta administradora, atualize `ADMIN_PASSWORD` na hospedagem e faça um novo deploy.
 
-2. Configure no ambiente de hospedagem as variáveis de [.env.example](.env.example). Use a URL do projeto, a chave publicável, a chave de serviço exclusivamente no servidor, os e-mails iniciais da Romagnole em `ADMIN_EMAILS` separados por vírgula, e a origem HTTPS do site em `SITE_URL`. Mantenha `DEMO_MODE=false` em produção.
-
-3. No Supabase Auth, habilite a autenticação por e-mail, configure o SMTP de produção e defina a URL do site. Adicione `https://<domínio>/auth/callback` à lista de redirecionamentos permitidos. Com o template padrão do Supabase, o usuário deve abrir o link no navegador em que o solicitou.
-
-4. Na Vercel, importe o repositório usando Next.js. Configure as variáveis no ambiente correspondente e publique. Para executar o build localmente, use `npm run build` e `npm start`.
-
-5. Entre com um dos e-mails internos iniciais. Cadastre os materiais, fornecedores, conversões e perfis. Envie o endereço do site aos usuários cadastrados para que eles solicitem o link temporário no próprio e-mail.
+Perfis existentes são preservados. Para migrar quem usava o link por e-mail, emita uma senha temporária com **Redefinir senha**. O envio de e-mails pelo Supabase Auth e o callback de login foram substituídos pelo login com senha.
 
 A base de produção começa vazia. Emissões do PDF podem usar a programação atual ou uma versão salva antes da divulgação. Consulte o histórico para identificar inclusões, alterações, cancelamentos e lançamentos.

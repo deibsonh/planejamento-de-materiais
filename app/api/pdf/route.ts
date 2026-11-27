@@ -2,8 +2,8 @@ import { createPdf } from '@/lib/pdf';
 import { defaultCalendar } from '@/lib/model';
 import { identify, load } from '@/lib/server';
 export async function GET(request:Request) {
-  const {data} = await load();
-  const profile = await identify(data);
+  const {data,credentials} = await load();
+  const profile = await identify(data,credentials);
   if (profile?.role !== 'internal') return new Response(null,{status:403});
   const params = new URL(request.url).searchParams;
   const month = params.get('month') || '';

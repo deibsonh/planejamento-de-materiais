@@ -282,9 +282,15 @@ export function apply(data:Data,profile:Profile,input:Input) {
       }
       break;
     }
+    case 'resetPassword': {
+      const email = value(input,'id').toLowerCase();
+      need(!isConfiguredAdmin(email) && data.profiles.some(p=>p.email===email),'Perfil indisponível para redefinição.');
+      log = 'Redefiniu a senha de ' + email;
+      break;
+    }
     case 'revoke': {
       const email = value(input,'email');
-      need(email !== profile.email && data.profiles.some(p=>p.email===email),'Perfil indisponível para revogação.');
+      need(email !== profile.email && (demo || !isConfiguredAdmin(email)) && data.profiles.some(p=>p.email===email),'Perfil indisponível para revogação.');
       data.profiles = data.profiles.filter(p=>p.email!==email);
       log = 'Revogou acesso de ' + email;
       break;

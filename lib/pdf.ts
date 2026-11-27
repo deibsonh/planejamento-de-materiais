@@ -24,9 +24,9 @@ export function createPdf(publication: Publication) {
     const footerHeight = 29 + Math.ceil(holidayLabels.length/6)*4;
     const rowWeights = values.map(row=>Math.max(1,...row.map(group=>group.length)));
     const rowHeight = Math.min(4.6,(210-27-footerHeight)/rowWeights.reduce((sum,n)=>sum+n,0));
-    doc.setFont('helvetica','bold').setFontSize(12).setTextColor('#252525');
+    doc.setFont('helvetica','bold').setFontSize(12).setTextColor('#464645');
     doc.text('PROGRAMAÇÃO DE ENTREGA DOS AGREGADOS - '+monthLabel(month).toUpperCase(),left,11.3);
-    doc.setFillColor('#134457').rect(left,16,width,11,'F');
+    doc.setFillColor('#AB0D19').rect(left,16,width,11,'F');
     doc.setDrawColor('#ffffff').setLineWidth(0.35);
     positions.forEach(x=>doc.line(x,16,x,27));
     doc.setFontSize(8).setTextColor('#ffffff').text('DATA',left+dateWidth/2,22.5,{align:'center'});
@@ -37,12 +37,12 @@ export function createPdf(publication: Publication) {
         doc.text('CÓDIGO '+material.id,center,24.5,{align:'center'});
       }
     });
-    doc.setLineWidth(0.17).setDrawColor('#cdd3d6').setTextColor('#252525');
+    doc.setLineWidth(0.17).setDrawColor('#dddddd').setTextColor('#464645');
     let y = 27;
     days.forEach((day,i)=>{
       const height = rowHeight*rowWeights[i];
       const nonWorkingDay = day.weekday === 0 || day.weekday === 6 || calendar.holidays.includes(day.iso);
-      if (nonWorkingDay || i%2 === 0) doc.setFillColor(nonWorkingDay?'#e5eaed':'#f1f4f5').rect(left,y,width,height,'F');
+      if (nonWorkingDay || i%2 === 0) doc.setFillColor(nonWorkingDay?'#e6e6e6':'#f2f2f2').rect(left,y,width,height,'F');
       doc.setFont('helvetica','normal').setFontSize(Math.min(7.3,rowHeight*2.15));
       const baseline = y+rowHeight*0.72;
       doc.text(String(day.day).padStart(2,'0'),left+2,baseline);
@@ -54,7 +54,7 @@ export function createPdf(publication: Publication) {
     doc.line(left,y,left+width,y);
     const totals = group.map(m=>entries.filter(e=>e.material===m.id).reduce((sum,e)=>sum+e.quantity,0));
     for (const [label, quantities] of [['TOTAL', totals], ['MÉDIA DIA', totals.map(n=>work.total ? n/work.total : 0)]] as const) {
-      doc.setFillColor('#e5eaed').rect(left,y,width,6,'F');
+      doc.setFillColor('#e6e6e6').rect(left,y,width,6,'F');
       doc.line(left,y,left+width,y);
       doc.setFont('helvetica','bold').setFontSize(8);
       doc.text(label,left+2,y+4);

@@ -4,10 +4,9 @@ import { ArrowDownToLine, ArrowLeftRight, ArrowRight, CalendarDays, ChevronDown,
 import { dateLabel, defaultCalendar, fmt, getSupplierDetails, monthLabel, received, round, currentMonth, workdays, type Data, type Entry, type Profile } from '@/lib/model';
 import { demoMonth } from '@/lib/seed';
 import { OperationForm, type Operation } from './workspace-forms';
-import { ThemeToggle } from './theme-toggle';
 
 type Tab = 'Visão geral'|'Programação'|'Envios'|'Recebimentos'|'PDF mensal'|'Cadastros'|'Perfis de acesso'|'Histórico';
-type State = {demo:boolean; profile:Profile|null; data:Data|null; configuredAdminEmails:string[]};
+type State = {demo:boolean; profile:Profile|null; data:Data|null; mustChangePassword:boolean; canManageProfiles:boolean};
 const menu = [
   {label:'Visão geral',icon:LayoutDashboard},{label:'Programação',icon:CalendarDays},{label:'Envios',icon:Truck},
   {label:'Recebimentos',icon:PackageCheck},{label:'PDF mensal',icon:FileText},
@@ -88,8 +87,8 @@ export default function Workspace() {
   const [menuPosition,setMenuPosition] = useState({top:0,right:0});
   const [account,setAccount] = useState(false);
   const [mobile,setMobile] = useState(false);
-  const [login,setLogin] = useState('');
   const [loginResult,setLoginResult] = useState('');
+  const [accessPending,setAccessPending] = useState(false);
   async function reload() {
     const response = await fetch('/api/data',{cache:'no-store'});
     const result = await response.json();
@@ -118,34 +117,73 @@ export default function Workspace() {
     if (!response.ok) throw new Error(result.error);
     const refreshed = await reload();
     if (!refreshed.profile || (state?.profile?.role==='internal' && refreshed.profile.role!=='internal')) go('Visão geral');
-    if (!refreshed.profile && input.action==='profile' && input.id===state?.profile?.email && typeof input.email==='string') {
-      setLogin(input.email.trim().toLowerCase());
-      setLoginResult('Perfil atualizado. Solicite um link para entrar com o novo e-mail.');
-      return;
-    }
     const deleted = ['deleteMaterial','deleteSupplier','deleteConversion'].some(action=>action===input.action);
     setToast(deleted?'Registro excluído com sucesso.':'Alteração salva com sucesso.');
   }
 
   function go(next:Tab) {setTab(next);setQuery('');setFilter('');setShowFilters(false);setMobile(false);setMenuId('');}
-  async function access(email:string) {
-    const response = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
+  async function access(email:string,password?:string) {
+    const response = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
     const result = await response.json();
     if (!response.ok) throw new Error(result.error);
-    if (state?.demo) {await reload();go('Visão geral');setAccount(false);}
-    else setLoginResult('Se o e-mail estiver autorizado, você receberá um link de acesso.');
+    await reload();
+    go('Visão geral');
+    setAccount(false);
+  }
+  async function submitAccess(event:FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (accessPending) return;
+    const form = new FormData(event.currentTarget);
+    const password = String(form.get('password') ?? '');
+    setAccessPending(true);
+    setLoginResult('');
+    try {
+      if (state?.mustChangePassword) {
+        if (password!==form.get('confirmation')) throw new Error('As senhas não coincidem.');
+        const response = await fetch('/api/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});
+        if (!response.ok) throw new Error((await response.json()).error);
+        await reload();
+      } else {
+        await access(String(form.get('email') ?? ''),password);
+      }
+    } catch (error) {
+      setLoginResult(error instanceof Error ? error.message : 'Não foi possível acessar a conta.');
+    } finally {
+      setAccessPending(false);
+    }
+  }
+  async function signOut() {
+    try {
+      const response = await fetch('/api/logout',{method:'POST'});
+      if (!response.ok) throw new Error('Não foi possível sair.');
+      setAccount(false);
+      setLoginResult('');
+      await reload();
+      go('Visão geral');
+    } catch {
+      setToast('Não foi possível sair. Tente novamente.');
+    }
   }
   const data = state?.data;
   const profile = state?.profile;
-  if (!profile || !data) return <div className="login"><ThemeToggle className="login-theme"/><div className="login-card">
+  if (!profile || !data) return <div className="login"><div className="login-card">
     <span className="app-title">Planejamento de Materiais</span>
-    <h1>{failure ? 'Configuração do ambiente' : state ? 'Acesse sua conta' : 'Carregando planejamento…'}</h1>
+    <h1>{failure ? 'Configuração do ambiente' : state?.mustChangePassword ? 'Defina sua nova senha' : state ? 'Acesse sua conta' : 'Carregando planejamento…'}</h1>
     {failure && <p>{failure}</p>}
-    {state && <form onSubmit={(e:FormEvent)=>{e.preventDefault();void access(login).catch(e=>setLoginResult(e.message));}}>
-      <label>E-mail<input type="email" value={login} onChange={e=>setLogin(e.target.value)} required placeholder="Seu e-mail de trabalho"/></label>
-      <button className="button primary" type="submit">Enviar link de acesso <ArrowRight size={16}/></button>
-      {loginResult && <p role="status">{loginResult}</p>}
-      {typeof window !== 'undefined' && window.location.search.includes('login=erro') && <p>O link expirou ou foi aberto em outro navegador. Solicite um novo link.</p>}
+    {state && <form key={state.mustChangePassword ? 'change' : 'login'} onSubmit={submitAccess}>
+      {state.mustChangePassword ? <>
+        <p>Substitua a senha temporária para acessar o planejamento.</p>
+        <label>Nova senha<input type="password" name="password" autoComplete="new-password" minLength={12} maxLength={128} required/></label>
+        <label>Confirme a nova senha<input type="password" name="confirmation" autoComplete="new-password" minLength={12} maxLength={128} required/></label>
+        <button className="button primary" type="submit" disabled={accessPending}>Salvar senha <ArrowRight size={16}/></button>
+        <button className="button" type="button" disabled={accessPending} onClick={()=>void signOut()}>Sair</button>
+      </> : <>
+        <label>E-mail<input name="email" type="email" autoComplete="username" required placeholder="Seu e-mail de trabalho"/></label>
+        <label>Senha<input name="password" type="password" autoComplete="current-password" maxLength={128} required/></label>
+        <button className="button primary" type="submit" disabled={accessPending}>Entrar <ArrowRight size={16}/></button>
+        <p>Se precisar redefinir a senha, entre em contato com o administrador.</p>
+      </>}
+      {loginResult && <p role="alert">{loginResult}</p>}
     </form>}
   </div></div>;
   const internal = profile.role === 'internal';
@@ -206,7 +244,7 @@ export default function Workspace() {
     <aside className={'sidebar '+(mobile?'mobile-open':'')}>
       <span className="app-title">Planejamento de Materiais</span>
       <div className="nav"><p>PLANEJAMENTO</p>{menu.slice(0,5).filter(item=>internal||partnerTabs.includes(item.label)).map(({label,icon:Icon})=><button className={tab===label?'active':''} key={label} onClick={()=>go(label)}><Icon size={17}/>{label}</button>)}
-        {internal && <><p>ADMINISTRAÇÃO</p>{menu.slice(5).map(({label,icon:Icon})=><button className={tab===label?'active':''} key={label} onClick={()=>go(label)}><Icon size={17}/>{label}</button>)}</>}
+        {internal && <><p>ADMINISTRAÇÃO</p>{menu.slice(5).filter(item=>item.label!=='Perfis de acesso'||state.canManageProfiles).map(({label,icon:Icon})=><button className={tab===label?'active':''} key={label} onClick={()=>go(label)}><Icon size={17}/>{label}</button>)}</>}
       </div>
       <div className="sidebar-bottom">
         <div className="account-wrap">
@@ -214,7 +252,7 @@ export default function Workspace() {
           {account && <div className="pop account-pop">
             {state.demo ? <><span>Visualizar como</span><button onClick={()=>void access('').catch(e=>setToast(e.message))}>Romagnole</button>
               {(internal?data.profiles.filter(p=>p.role!=='internal'):[]).map(p=><button key={p.email} onClick={()=>void access(p.email).catch(e=>setToast(e.message))}>{p.name} · {roleLabel[p.role]}</button>)}</>
-              : <button onClick={async()=>{await fetch('/api/logout',{method:'POST'});await reload();go('Visão geral');}}><LogOut size={15}/> Sair</button>}
+              : <button onClick={()=>void signOut()}><LogOut size={15}/> Sair</button>}
           </div>}
         </div>
       </div>
@@ -222,7 +260,6 @@ export default function Workspace() {
     <div className="main">
       <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="Abrir navegação" onClick={()=>setMobile(true)}><Menu size={20}/></button><span>Planejamento</span><ChevronRight size={14}/><strong>{tab}</strong></div><div className="top-actions">
         {state.demo && <span className="environment"><i/> Demonstração</span>}
-        <ThemeToggle/>
       </div></header>
       <main className="content">
         <div className="page-heading"><div><h1>{tab}</h1><p>{panelDescriptions[tab]}</p></div>
@@ -231,7 +268,7 @@ export default function Workspace() {
             {(tab==='Visão geral'||tab==='Programação'&&internal) && <button className="button primary" onClick={primary}><Plus size={17}/>{primaryTitle}</button>}
             {tab==='Envios' && <button className="button primary" onClick={()=>setOperation({kind:'shipment'})}><Plus size={17}/> Registrar envio</button>}
             {tab==='Recebimentos' && internal && <button className="button primary" onClick={()=>setOperation({kind:'receipt'})}><Plus size={17}/> Registrar recebimento</button>}
-            {tab==='Perfis de acesso' && <button className="button primary" onClick={()=>setOperation({kind:'profile'})}><Plus size={17}/> Novo perfil</button>}
+            {tab==='Perfis de acesso' && state.canManageProfiles && <button className="button primary" onClick={()=>setOperation({kind:'profile'})}><Plus size={17}/> Novo perfil</button>}
           </div>
         </div>
         {tab==='Visão geral' && <>
@@ -316,17 +353,17 @@ export default function Workspace() {
             </Table>
           </section>
         </div>}
-        {tab==='Perfis de acesso'&&internal&& <section className="panel"><div className="panel-heading"><div><h2>Perfis cadastrados</h2><p>Compartilhe o endereço do portal para que o parceiro solicite um link de acesso com o e-mail cadastrado.</p></div><button className="button" onClick={async()=>{try{await navigator.clipboard.writeText(window.location.origin);setToast('Endereço de acesso copiado.');}catch{setToast('Copie o endereço do site na barra do navegador.');}}}>Copiar endereço de acesso</button></div>
+        {tab==='Perfis de acesso'&&state.canManageProfiles&& <section className="panel"><div className="panel-heading"><div><h2>Perfis cadastrados</h2><p>Compartilhe o endereço do portal e entregue a senha temporária diretamente à pessoa cadastrada.</p></div><button className="button" onClick={async()=>{try{await navigator.clipboard.writeText(window.location.origin);setToast('Endereço de acesso copiado.');}catch{setToast('Copie o endereço do site na barra do navegador.');}}}>Copiar endereço de acesso</button></div>
           <Table columns={['Perfil','E-mail','Tipo','Permissões','']} empty={!data.profiles.length}>{data.profiles.map(p=><tr key={p.email}>
-            <td><strong>{p.name}</strong></td><td>{p.email}</td><td>{roleLabel[p.role]}{state.configuredAdminEmails.includes(p.email)&&<small className="profile-role-note">Acesso interno pela configuração</small>}</td>
+            <td><strong>{p.name}</strong></td><td>{p.email}</td><td>{roleLabel[p.role]}{!state.demo&&profile.email===p.email&&<small className="profile-role-note">Administrador configurado no ambiente</small>}</td>
             <td>{p.role==='internal'?'Acesso interno':p.scopes.map(s=>s.supplier+' / '+(materials.get(s.material)?.name || s.material)).join(' · ')}</td>
-            <td><div className="table-buttons"><button className="text-button" onClick={()=>setOperation({kind:'profile',id:p.email})}>Editar</button><button className="text-button danger" disabled={profile.email===p.email} onClick={()=>setOperation({kind:'revoke',id:p.email})}>Revogar</button></div></td>
+            <td><div className="table-buttons"><button className="text-button" onClick={()=>setOperation({kind:'profile',id:p.email})}>Editar</button>{!state.demo&&profile.email!==p.email&&<button className="text-button" onClick={()=>setOperation({kind:'resetPassword',id:p.email})}>Redefinir senha</button>}<button className="text-button danger" disabled={profile.email===p.email} onClick={()=>setOperation({kind:'revoke',id:p.email})}>Revogar</button></div></td>
           </tr>)}</Table>
         </section>}
         {tab==='Histórico'&&internal&& <section className="panel"><div className="panel-heading"><h2>Alterações registradas</h2></div><Table columns={['Data e hora','Responsável','Alteração']} empty={!data.history.length}>{data.history.map((h,i)=><tr key={h.date+i}><td>{timeLabel(h.date)}</td><td><strong>{h.author}</strong></td><td>{h.detail}</td></tr>)}</Table></section>}
       </main>
     </div>
     {toast&& <div className="toast" role="status">{toast}<button className="icon-button" aria-label="Dispensar" onClick={()=>setToast('')}><X size={16}/></button></div>}
-    {operation && <OperationForm operation={operation} profile={profile} data={data} month={month} configuredAdmin={state.configuredAdminEmails.includes(operation.id ?? '')} onClose={()=>setOperation(null)} onSave={send}/>}
+    {operation && <OperationForm operation={operation} profile={profile} data={data} month={month} demo={state.demo} onClose={()=>setOperation(null)} onSave={send}/>}
   </div>;
 }

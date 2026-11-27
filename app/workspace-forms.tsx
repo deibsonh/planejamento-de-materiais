@@ -7,7 +7,7 @@ const titles = {
   entry:'Nova programação', receipt:'Registrar recebimento', shipment:'Registrar envio', cancel:'Cancelar programação',
   material:'Novo material', supplier:'Novo fornecedor', conversion:'Cadastrar conversão', profile:'Configurar perfil',
   calendar:'Calendário do mês', publish:'Salvar versão da programação', duplicate:'Vincular envios',
-  receiptDetails:'Detalhes do recebimento', revoke:'Revogar acesso'
+  receiptDetails:'Detalhes do recebimento', revoke:'Revogar acesso', resetPassword:'Redefinir senha'
 };
 const catalogOperations = {
   material:{editTitle:'Editar material',deleteTitle:'Excluir material',deleteAction:'deleteMaterial',subject:'o material'},
@@ -15,7 +15,7 @@ const catalogOperations = {
   conversion:{editTitle:'Editar conversão',deleteTitle:'Excluir conversão',deleteAction:'deleteConversion',subject:'a conversão'}
 };
 export type Operation = {kind:keyof typeof titles;id?:string;scope?:Scope;remove?:boolean};
-type Props = {operation:Operation;profile:Profile;data:Data;month:string;configuredAdmin:boolean;onClose:()=>void;onSave:(input:Record<string,unknown>)=>Promise<void>};
+type Props = {operation:Operation;profile:Profile;data:Data;month:string;demo:boolean;onClose:()=>void;onSave:(input:Record<string,unknown>)=>Promise<void>};
 const today = () => {
   const parts = new Intl.DateTimeFormat('en-CA',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:'America/Sao_Paulo'}).formatToParts(new Date());
   return ['year','month','day'].map(key=>parts.find(part=>part.type===key)?.value).join('-');
@@ -42,7 +42,7 @@ function CatalogUnitSelect({initial}:{initial?:string}) {
     {initial && !standard && <option value={initial}>{initial}</option>}
   </select>;
 }
-export function OperationForm({operation,profile,data,month,configuredAdmin,onClose,onSave}:Props) {
+export function OperationForm({operation,profile,data,month,demo,onClose,onSave}:Props) {
   const {kind,id,scope:previousScope} = operation;
   const catalog = kind==='material'||kind==='supplier'||kind==='conversion' ? catalogOperations[kind] : undefined;
   const deleting = Boolean(catalog && operation.remove);
@@ -180,7 +180,7 @@ export function OperationForm({operation,profile,data,month,configuredAdmin,onCl
             <Field label="Nome do perfil"><Input name="name" initial={existingProfile?.name}/></Field>
             <Field label="Tipo de acesso"><select value={role} onChange={e=>setRole(e.target.value as Profile['role'])}><option value="supplier">Fornecedor</option><option value="carrier">Transportadora</option><option value="internal">Equipe interna</option></select></Field>
             <Field label="E-mail autorizado" wide><Input name="email" type="email" initial={existingProfile?.email} placeholder="contato@empresa.com.br"/></Field>
-            {configuredAdmin&&<p className="info wide">A configuração do ambiente concede acesso interno ao endereço {existingProfile?.email}.</p>}
+            {!demo&&!existingProfile&&<Field label="Senha temporária" wide><input name="password" type="password" autoComplete="new-password" minLength={12} maxLength={128} required/></Field>}
           </div>
           {role!=='internal'&&<div className="allocation"><div className="allocation-title"><div><h3>Permissões</h3><p>Informe os materiais de cada fornecedor que o perfil pode acessar.</p></div></div>
             {scopes.map((s,i)=><div key={i} className="form-grid allocation-grid">
@@ -200,6 +200,10 @@ export function OperationForm({operation,profile,data,month,configuredAdmin,onCl
         </div>}
         {kind==='cancel'&&<p>Cancelar a programação de {initial?.supplier} em {initial?dateLabel(initial.date):''}? O registro ficará disponível no histórico.</p>}
         {kind==='publish'&&<p>Salvar uma versão de {monthLabel(month)} para divulgação? Ela preservará as quantidades, os materiais e o calendário atuais.</p>}
+        {kind==='resetPassword'&&<>
+          <p>Defina uma senha temporária para {existingProfile?.email}. A pessoa precisará trocá-la no próximo acesso.</p>
+          <Field label="Nova senha temporária"><input name="password" type="password" autoComplete="new-password" minLength={12} maxLength={128} required/></Field>
+        </>}
         {kind==='revoke'&&<p>Revogar o acesso de {existingProfile?.name}? O histórico dos lançamentos continuará disponível.</p>}
         {kind==='duplicate'&&<><p>Selecione o envio principal desta carga. O registro de {shipment?.author} permanecerá no histórico e será contado junto dele.</p>
           <Field label="Envio principal"><select name="target" required><option value="">Selecione</option>{data.shipments.filter(s=>s.id!==id&&s.supplier===shipment?.supplier&&s.material===shipment?.material&&!s.duplicateOf).map(s=><option key={s.id} value={s.id}>{dateLabel(s.date)} · {fmt(s.quantity)} {s.unit} · {s.author}{s.nf?' · NF '+s.nf:''}</option>)}</select></Field></>}
