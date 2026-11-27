@@ -31,7 +31,10 @@ const nonce = (month:string, diff:number) => {
   return new Date(Date.UTC(y,m-1+diff,1)).toISOString().slice(0,7);
 };
 const planningStatuses = {
-  Pendente:'blue', Parcial:'amber', Encerrado:'green', Cancelado:'gray'
+  Pendente:{tone:'blue', option:'Situação pendente'},
+  Parcial:{tone:'amber', option:'Situação parcial'},
+  Encerrado:{tone:'green', option:'Situação entregue'},
+  Cancelado:{tone:'gray', option:'Situação cancelado'}
 } as const;
 const weekdayFormatter = new Intl.DateTimeFormat('pt-BR',{weekday:'long',timeZone:'UTC'});
 const materialIcons:Record<MaterialType,LucideIcon> = {
@@ -268,7 +271,7 @@ export default function Workspace() {
       {materialSelect}
       <select aria-label="Filtrar situação" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
         <option value="">Todas situações</option>
-        {Object.keys(planningStatuses).map(label=><option key={label} value={label}>{label==='Pendente'?'Situação pendente':label}</option>)}
+        {Object.entries(planningStatuses).map(([label,{option}])=><option key={label} value={label}>{option}</option>)}
       </select>
     </div>;
     return <div className="tools">
@@ -284,7 +287,7 @@ export default function Workspace() {
         return <tr key={e.id}><td className="date-cell"><time dateTime={e.date}>{dateLabel(e.date)}{planning&&<small>{weekdayFormatter.format(new Date(e.date))}</small>}</time></td><td><div className="material-cell"><MaterialIcon type={material?.type}/><div><strong>{material?.name || e.material}</strong><small>{e.material}</small></div></div></td>
           <td>{e.supplier}</td><td><strong>{fmt(e.quantity)}</strong> <span className="muted">{material?.unit}</span></td>
           <td>{actual ? <><strong>{fmt(actual)}</strong> <span className="muted">{material?.unit}</span></> : <span className="muted">{planning ? 0 : blank}</span>}</td>
-          <td>{e.canceled || e.closed ? blank : fmt(Math.max(0,round(e.quantity-actual)))}</td><td><Badge label={label} tone={planningStatuses[label]}/></td>
+          <td>{e.canceled || e.closed ? blank : fmt(Math.max(0,round(e.quantity-actual)))}</td><td><Badge label={label} tone={planningStatuses[label].tone}/></td>
           {internal && <td className="row-actions"><button className="icon-button" aria-label="Ações da programação" onClick={event=>{
             const rect = event.currentTarget.getBoundingClientRect();
             setMenuPosition({top:Math.min(rect.bottom,window.innerHeight-119),right:window.innerWidth-rect.right});

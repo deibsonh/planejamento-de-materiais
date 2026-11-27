@@ -150,8 +150,8 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
               {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(day=><span key={day} className="planning-weekday" aria-hidden="true">{day}</span>)}
               {planningDays.map(({iso,day,weekday})=><label key={iso} className="planning-day"
                 style={day===1 ? {gridColumnStart:weekday+1} : undefined}>
-                <span>{day}</span>
-                <input name={iso} inputMode="decimal" maxLength={18} placeholder="0" aria-label={`Quantidade em ${dateLabel(iso)}${chosen ? ' ('+chosen.unit+')' : ''}`}/>
+                <span>Dia {String(day).padStart(2,'0')}</span>
+                <input name={iso} inputMode="decimal" maxLength={18} placeholder="0,000" aria-label={`Quantidade em ${dateLabel(iso)}${chosen ? ' ('+chosen.unit+')' : ''}`}/>
               </label>)}
             </div>
           </div>
