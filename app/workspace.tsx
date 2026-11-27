@@ -1,6 +1,6 @@
 'use client';
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowDownToLine, ArrowLeftRight, ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, Clock3, Container, Ellipsis, FileText, Flame, FlaskConical, Fuel, Gem, Grid3x3, Grip, History, Hourglass, LayoutDashboard, LogOut, Menu, Mountain, Package, PackageCheck, Pencil, Plus, Search, Settings2, Shapes, SlidersHorizontal, SprayCan, Trash2, TreePine, Truck, Users, X, type LucideIcon } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { ArrowDownToLine, ArrowLeftRight, ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, Clock3, Container, Ellipsis, FileText, Flame, FlaskConical, Fuel, Gem, Grid3x3, Grip, History, Hourglass, KeyRound, LayoutDashboard, LogOut, Menu, Mountain, Package, PackageCheck, Pencil, Plus, Search, Settings2, Shapes, SlidersHorizontal, SprayCan, Trash2, TreePine, Truck, Users, X, type LucideIcon } from 'lucide-react';
 import { dateLabel, defaultCalendar, fmt, getSupplierDetails, monthLabel, received, round, currentMonth, workdays, type Data, type Entry, type MaterialType, type Profile } from '@/lib/model';
 import { demoMonth } from '@/lib/seed';
 import { OperationForm, type Operation } from './workspace-forms';
@@ -102,6 +102,7 @@ export default function Workspace() {
   const [mobile,setMobile] = useState(false);
   const [loginResult,setLoginResult] = useState('');
   const [accessPending,setAccessPending] = useState(false);
+  const recoveryDialog = useRef<HTMLDialogElement>(null);
   async function reload() {
     const response = await fetch('/api/data',{cache:'no-store'});
     const result = await response.json();
@@ -179,26 +180,58 @@ export default function Workspace() {
   }
   const data = state?.data;
   const profile = state?.profile;
-  if (!profile || !data) return <div className="login"><div className="login-card">
-    <span className="app-title">Planejamento de Materiais</span>
-    <h1>{failure ? 'Configuração do ambiente' : state?.mustChangePassword ? 'Defina sua nova senha' : state ? 'Acesse sua conta' : 'Carregando planejamento…'}</h1>
-    {failure && <p>{failure}</p>}
-    {state && <form key={state.mustChangePassword ? 'change' : 'login'} onSubmit={submitAccess}>
-      {state.mustChangePassword ? <>
-        <p>Substitua a senha temporária para acessar o planejamento.</p>
-        <label>Nova senha<input type="password" name="password" autoComplete="new-password" minLength={12} maxLength={128} required/></label>
-        <label>Confirme a nova senha<input type="password" name="confirmation" autoComplete="new-password" minLength={12} maxLength={128} required/></label>
-        <button className="button primary" type="submit" disabled={accessPending}>Salvar senha <ArrowRight size={16}/></button>
-        <button className="button" type="button" disabled={accessPending} onClick={()=>void signOut()}>Sair</button>
-      </> : <>
-        <label>E-mail<input name="email" type="email" autoComplete="username" required placeholder="Seu e-mail de trabalho"/></label>
-        <label>Senha<input name="password" type="password" autoComplete="current-password" maxLength={128} required/></label>
-        <button className="button primary" type="submit" disabled={accessPending}>Entrar <ArrowRight size={16}/></button>
-        <p>Se precisar redefinir a senha, entre em contato com o administrador.</p>
-      </>}
-      {loginResult && <p role="alert">{loginResult}</p>}
-    </form>}
-  </div></div>;
+  const notification = toast && <div className="toast" role="status">{toast}<button className="icon-button" aria-label="Dispensar" onClick={()=>setToast('')}><X size={16}/></button></div>;
+  if (!profile || !data) {
+    const changingPassword = state?.mustChangePassword;
+    return <main className="login">
+      {state ? <div className="login-layout">
+        <div className="login-brand">
+          <span className="login-brand-mark"><CalendarDays size={28} aria-hidden="true"/></span>
+          <p>Planejamento<br/> de Materiais</p>
+          <span className="login-brand-name">Romagnole</span>
+        </div>
+        <section className="login-card" aria-labelledby="login-title">
+          <h1 id="login-title">{changingPassword ? 'Defina sua nova senha' : 'Acesse sua conta'}</h1>
+          <form key={changingPassword ? 'change' : 'login'} onSubmit={submitAccess}>
+            {changingPassword ? <>
+              <p>Substitua a senha temporária para acessar o planejamento.</p>
+              <label>Nova senha<input type="password" name="password" autoComplete="new-password" minLength={12} maxLength={128} required/></label>
+              <label>Confirme a nova senha<input type="password" name="confirmation" autoComplete="new-password" minLength={12} maxLength={128} required/></label>
+            </> : <>
+              <label>E-mail<input name="email" type="email" autoComplete="username" required placeholder="Seu e-mail de trabalho"/></label>
+              <label>Senha<input name="password" type="password" autoComplete="current-password" maxLength={128} required/></label>
+            </>}
+            {loginResult && <p className="form-error" role="alert">{loginResult}</p>}
+            <button className="button primary login-submit" type="submit" disabled={accessPending}>
+              {accessPending ? (changingPassword?'Salvando…':'Entrando…') : (changingPassword?'Salvar senha':'Entrar')}
+              <ArrowRight size={17} aria-hidden="true"/>
+            </button>
+            {changingPassword
+              ? <button className="button" type="button" disabled={accessPending} onClick={()=>void signOut()}>Sair</button>
+              : <button className="text-button login-recovery" type="button" onClick={()=>recoveryDialog.current?.showModal()}>Recuperar senha</button>}
+          </form>
+        </section>
+      </div> : <section className="login-loading" aria-labelledby="loading-title" role={failure?'alert':'status'}>
+        <span className="login-brand-mark"><CalendarDays size={27} aria-hidden="true"/></span>
+        <span className="app-title">Planejamento de Materiais</span>
+        <h1 id="loading-title">{failure ? 'Configuração do ambiente' : 'Carregando planejamento…'}</h1>
+        {failure ? <p>{failure}</p> : <div className="login-progress" aria-hidden="true"><span/></div>}
+      </section>}
+      <dialog className="dialog recovery-dialog" ref={recoveryDialog} aria-labelledby="recovery-title" aria-describedby="recovery-description"
+        onClick={event=>{if(event.target===event.currentTarget) event.currentTarget.close();}}>
+        <div className="recovery-content">
+          <div className="recovery-heading">
+            <span className="material-icon"><KeyRound size={20} aria-hidden="true"/></span>
+            <button className="icon-button" type="button" aria-label="Fechar" onClick={()=>recoveryDialog.current?.close()}><X size={18}/></button>
+          </div>
+          <h2 id="recovery-title">Recuperar senha</h2>
+          <p id="recovery-description">Entre em contato com o administrador para solicitar uma nova senha temporária.</p>
+          <button className="button primary" type="button" autoFocus onClick={()=>recoveryDialog.current?.close()}>Entendi</button>
+        </div>
+      </dialog>
+      {notification}
+    </main>;
+  }
   const internal = profile.role === 'internal';
   const materials = new Map(data.materials.map(m=>[m.id,m]));
   const selectedMonth = data.entries.filter(e=>e.date.startsWith(month+'-'));
@@ -228,14 +261,15 @@ export default function Workspace() {
   const primaryTitle = internal ? 'Nova programação':'Registrar envio';
   const primary = ()=>setOperation({kind:internal?'entryMonth':'shipment'});
   function toolbar() {
-    const materialSelect = <select aria-label={planning?undefined:'Filtrar material'} value={filter} onChange={e=>setFilter(e.target.value)}>
+    const materialSelect = <select aria-label="Filtrar material" value={filter} onChange={e=>setFilter(e.target.value)}>
       <option value="">Todos os materiais</option>{Array.from(materials.values(),m=><option key={m.id} value={m.id}>{m.name}</option>)}
     </select>;
     if (planning) return <div className="tools">
-      <label className="planning-filter">Material{materialSelect}</label>
-      <label className="planning-filter">Situação<select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
-        <option value="">Todas</option>{Object.keys(planningStatuses).map(label=><option key={label}>{label}</option>)}
-      </select></label>
+      {materialSelect}
+      <select aria-label="Filtrar situação" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+        <option value="">Todas situações</option>
+        {Object.keys(planningStatuses).map(label=><option key={label} value={label}>{label==='Pendente'?'Situação pendente':label}</option>)}
+      </select>
     </div>;
     return <div className="tools">
       <div className="search"><Search size={16}/><input aria-label="Buscar material ou fornecedor" placeholder="Buscar material ou fornecedor…" value={query} onChange={e=>setQuery(e.target.value)}/></div>
@@ -249,7 +283,7 @@ export default function Workspace() {
         const material=materials.get(e.material);
         return <tr key={e.id}><td className="date-cell"><time dateTime={e.date}>{dateLabel(e.date)}{planning&&<small>{weekdayFormatter.format(new Date(e.date))}</small>}</time></td><td><div className="material-cell"><MaterialIcon type={material?.type}/><div><strong>{material?.name || e.material}</strong><small>{e.material}</small></div></div></td>
           <td>{e.supplier}</td><td><strong>{fmt(e.quantity)}</strong> <span className="muted">{material?.unit}</span></td>
-          <td>{actual ? <><strong>{fmt(actual)}</strong> <span className="muted">{material?.unit}</span></> : <span className="muted">{blank}</span>}</td>
+          <td>{actual ? <><strong>{fmt(actual)}</strong> <span className="muted">{material?.unit}</span></> : <span className="muted">{planning ? 0 : blank}</span>}</td>
           <td>{e.canceled || e.closed ? blank : fmt(Math.max(0,round(e.quantity-actual)))}</td><td><Badge label={label} tone={planningStatuses[label]}/></td>
           {internal && <td className="row-actions"><button className="icon-button" aria-label="Ações da programação" onClick={event=>{
             const rect = event.currentTarget.getBoundingClientRect();
@@ -389,7 +423,7 @@ export default function Workspace() {
         {tab==='Histórico'&&internal&& <section className="panel"><div className="panel-heading"><h2>Alterações registradas</h2></div><Table columns={['Data e hora','Responsável','Alteração']} empty={!data.history.length}>{data.history.map((h,i)=><tr key={h.date+i}><td>{timeLabel(h.date)}</td><td><strong>{h.author}</strong></td><td>{h.detail}</td></tr>)}</Table></section>}
       </main>
     </div>
-    {toast&& <div className="toast" role="status">{toast}<button className="icon-button" aria-label="Dispensar" onClick={()=>setToast('')}><X size={16}/></button></div>}
+    {notification}
     {operation && <OperationForm operation={operation} profile={profile} data={data} month={month} demo={state.demo} onClose={()=>setOperation(null)} onSave={send}/>}
   </div>;
 }

@@ -140,10 +140,10 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
       <div className="form-content">
         {scoped && <div className="form-grid">
           <Field label="Fornecedor"><select value={supplier} required onChange={e=>changeScope(e.target.value,'')}><option value="">Selecione</option>{data.suppliers.filter(s=>profile.role==='internal'||profile.scopes.some(p=>p.supplier===s)).map(s=><option key={s}>{s}</option>)}</select></Field>
-          <Field label="Material"><select value={material} required onChange={e=>changeScope(supplier,e.target.value)}><option value="">Selecione</option>{data.materials.filter(m=>allowed(profile,{supplier,material:m.id})).map(m=><option key={m.id} value={m.id}>{m.name} · {m.id}</option>)}</select></Field>
+          <Field label="Material"><select value={material} required onChange={e=>changeScope(supplier,e.target.value)}><option value="">Selecione</option>{data.materials.filter(m=>allowed(profile,{supplier,material:m.id})).map(m=><option key={m.id} value={m.id}>{m.name} · {m.id}{kind==='entryMonth' ? ' · '+m.unit : ''}</option>)}</select></Field>
         </div>}
         {kind==='entryMonth'&&<fieldset className="planning-calendar" disabled={!supplier || !chosen || saving}>
-          <legend>{monthLabel(month)}{chosen ? ' · '+chosen.unit : ''}</legend>
+          <legend>{monthLabel(month)}</legend>
           <p className="info">{supplier && chosen ? 'Preencha os dias em que deseja programar entregas.' : 'Selecione o fornecedor e o material para preencher as quantidades.'}</p>
           <div className="planning-scroll">
             <div className="planning-grid">
@@ -151,7 +151,7 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
               {planningDays.map(({iso,day,weekday})=><label key={iso} className="planning-day"
                 style={day===1 ? {gridColumnStart:weekday+1} : undefined}>
                 <span>{day}</span>
-                <input name={iso} inputMode="decimal" maxLength={18} placeholder="—" aria-label={`Quantidade em ${dateLabel(iso)}${chosen ? ' ('+chosen.unit+')' : ''}`}/>
+                <input name={iso} inputMode="decimal" maxLength={18} placeholder="0" aria-label={`Quantidade em ${dateLabel(iso)}${chosen ? ' ('+chosen.unit+')' : ''}`}/>
               </label>)}
             </div>
           </div>
