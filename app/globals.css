@@ -159,6 +159,9 @@ td.empty{text-align:center;color:var(--muted);padding:34px 12px}
 .badge{display:inline-flex;align-items:center;gap:2px;font-size:10px;font-weight:700;padding:4px 7px;border-radius:15px}
 .badge.blue{background:var(--info-surface);color:var(--info-text)}.badge.green{background:var(--success-surface);color:var(--success-text)}
 .badge.amber{background:var(--warning-surface);color:var(--warning-text)}.badge.gray{background:var(--neutral-surface);color:var(--neutral-text)}
+.badge.planning-partial{background:#fff2bf;color:#705300}
+.badge.planning-delivered{background:#dff3e6;color:#20603c}
+.badge.planning-canceled{background:var(--danger-surface);color:var(--danger-text)}
 .row-actions{position:relative;text-align:right}
 .row-pop{position:fixed}
 .muted{color:var(--muted)}
@@ -195,28 +198,24 @@ td.empty{text-align:center;color:var(--muted);padding:34px 12px}
 .form-content input:not([type=checkbox]),.form-content select,.form-content textarea,.login input,.tools select{border:1px solid var(--control-border);border-radius:7px;padding:8px 9px;background:var(--paper);color:var(--ink);width:100%;min-height:36px;font-weight:500}
 input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
 .tools select{width:auto;font-size:12px}
-.planning-table .tools select,.planning-dialog .form-content select{
-  appearance:none;
-  padding-inline-end:34px;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23575756' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;
-  background-position:right 11px center;
-  background-size:14px;
-}
-@media(forced-colors:active){
-  .planning-table .tools select,.planning-dialog .form-content select{appearance:auto;background-image:none;padding-inline-end:9px}
-}
 .planning-dialog{width:min(880px,calc(100% - 26px))}
 .planning-calendar{min-inline-size:0;margin:0;padding:10px 11px 11px;border:1px solid var(--line);border-radius:9px;background:var(--surface-subtle)}
 .planning-calendar legend{padding:0 5px;font-weight:700}
-.planning-calendar .info{margin:0 0 9px}
+.planning-total{display:block;margin:8px 3px 0;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.planning-total strong{margin-inline-start:4px;color:var(--ink)}
 .planning-scroll{overflow-x:auto;padding:3px}
-.planning-grid{display:grid;grid-template-columns:repeat(7,minmax(60px,1fr));gap:6px}
+.planning-grid{display:grid;grid-template-columns:repeat(7,minmax(78px,1fr));gap:6px}
 .planning-weekday{text-align:center;color:var(--muted);font-size:11px;font-weight:700}
 .form-content .planning-day{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:5px}
-.planning-day span{padding-inline:2px}
-.form-content .planning-day input{min-width:0;padding:4px 5px;min-height:30px;font-variant-numeric:tabular-nums}
+.planning-day span{text-align:center;padding-inline:2px}
+.form-content .planning-day input{min-width:0;padding:4px 5px;min-height:30px;text-align:center;font-variant-numeric:tabular-nums}
 .planning-day input:disabled{background:var(--surface-subtle)}
+.form-content .planning-holiday{background:var(--danger-surface);color:var(--danger-text);text-align:center}
+.planning-holiday input:disabled{opacity:.65}
+.planning-holiday small{font-size:10px}
+.holiday-controls{display:flex;align-items:end;gap:8px;flex-wrap:wrap}
+.holiday-list{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;list-style:none}
+.holiday-list li{display:flex;align-items:center;gap:4px;padding-inline-start:8px;background:var(--paper);border:1px solid var(--line);border-radius:7px}
 .form-content textarea{resize:vertical}
 .allocation{border:1px solid var(--line);background:var(--surface-subtle);border-radius:9px;padding:11px;display:grid;gap:10px}
 .allocation-title h3,.details h3{font-size:13px}

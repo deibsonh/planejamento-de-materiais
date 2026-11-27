@@ -30,11 +30,12 @@ const nonce = (month:string, diff:number) => {
   const [y,m] = month.split('-').map(Number);
   return new Date(Date.UTC(y,m-1+diff,1)).toISOString().slice(0,7);
 };
+const inProgressFilter = 'andamento';
 const planningStatuses = {
   Pendente:{tone:'blue', option:'Situação pendente'},
-  Parcial:{tone:'amber', option:'Situação parcial'},
-  Encerrado:{tone:'green', option:'Situação entregue'},
-  Cancelado:{tone:'gray', option:'Situação cancelado'}
+  Parcial:{tone:'planning-partial', option:'Situação parcial'},
+  Encerrado:{tone:'planning-delivered', option:'Situação entregue'},
+  Cancelado:{tone:'planning-canceled', option:'Situação cancelado'}
 } as const;
 const weekdayFormatter = new Intl.DateTimeFormat('pt-BR',{weekday:'long',timeZone:'UTC'});
 const materialIcons:Record<MaterialType,LucideIcon> = {
@@ -95,7 +96,7 @@ export default function Workspace() {
   const [tab,setTab] = useState<Tab>('Visão geral');
   const [query,setQuery] = useState('');
   const [filter,setFilter] = useState('');
-  const [statusFilter,setStatusFilter] = useState('Pendente');
+  const [statusFilter,setStatusFilter] = useState(inProgressFilter);
   const [showFilters,setShowFilters] = useState(false);
   const [operation,setOperation] = useState<Operation|null>(null);
   const [toast,setToast] = useState('');
@@ -138,7 +139,7 @@ export default function Workspace() {
     setToast(deleted?'Registro excluído com sucesso.':input.action==='entryMonth'?'Programação salva com sucesso.':'Alteração salva com sucesso.');
   }
 
-  function go(next:Tab) {setTab(next);setQuery('');setFilter('');setStatusFilter('Pendente');setShowFilters(false);setMobile(false);setMenuId('');}
+  function go(next:Tab) {setTab(next);setQuery('');setFilter('');setStatusFilter(inProgressFilter);setShowFilters(false);setMobile(false);setMenuId('');}
   async function access(email:string,password?:string) {
     const response = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
     const result = await response.json();
@@ -254,7 +255,8 @@ export default function Workspace() {
   const ordered = (planning ? selectedMonth : entries).filter(matching)
     .map(entry=>({entry,actual:received(data,entry.id)}))
     .map(row=>({...row,label:status(row.entry,row.actual)}))
-    .filter(row=>!planning || !statusFilter || row.label===statusFilter)
+    .filter(({label})=>!planning || !statusFilter ||
+      (statusFilter===inProgressFilter ? label==='Pendente' || label==='Parcial' : label===statusFilter))
     .sort((a,b)=>a.entry.date.localeCompare(b.entry.date));
   const visibleEntries = tab==='Visão geral' ? ordered.slice(0,6) : ordered;
   const calendar = data.calendars[month] || defaultCalendar;
@@ -270,6 +272,7 @@ export default function Workspace() {
     if (planning) return <div className="tools">
       {materialSelect}
       <select aria-label="Filtrar situação" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+        <option value={inProgressFilter}>Situação andamento</option>
         <option value="">Todas situações</option>
         {Object.entries(planningStatuses).map(([label,{option}])=><option key={label} value={label}>{option}</option>)}
       </select>
@@ -281,13 +284,18 @@ export default function Workspace() {
     </div>;
   }
   function planningTable() {
-    return <Table columns={[planning?'Entrega':'Data prevista','Material','Fornecedor','Programado','Recebido','Saldo','Situação',...(internal?[planning?'Ações':'']:[])]} empty={!visibleEntries.length}>
+    return <Table columns={[planning?'Entrega':'Data prevista','Material','Fornecedor','Programado',...(planning?['Saldo','Recebido']:['Recebido','Saldo']),'Situação',...(internal?[planning?'Ações':'']:[])]} empty={!visibleEntries.length}>
       {visibleEntries.map(({entry:e,actual,label})=>{
         const material=materials.get(e.material);
+        const balance = e.canceled || e.closed ? 0 : Math.max(0,round(e.quantity-actual));
+        const quantityCell = (quantity:number) => <td><strong>{fmt(quantity)}</strong> <span className="muted">{material?.unit}</span></td>;
         return <tr key={e.id}><td className="date-cell"><time dateTime={e.date}>{dateLabel(e.date)}{planning&&<small>{weekdayFormatter.format(new Date(e.date))}</small>}</time></td><td><div className="material-cell"><MaterialIcon type={material?.type}/><div><strong>{material?.name || e.material}</strong><small>{e.material}</small></div></div></td>
-          <td>{e.supplier}</td><td><strong>{fmt(e.quantity)}</strong> <span className="muted">{material?.unit}</span></td>
-          <td>{actual ? <><strong>{fmt(actual)}</strong> <span className="muted">{material?.unit}</span></> : <span className="muted">{planning ? 0 : blank}</span>}</td>
-          <td>{e.canceled || e.closed ? blank : fmt(Math.max(0,round(e.quantity-actual)))}</td><td><Badge label={label} tone={planningStatuses[label].tone}/></td>
+          <td>{e.supplier}</td>{quantityCell(e.quantity)}
+          {planning ? <>{quantityCell(balance)}{quantityCell(actual)}</> : <>
+            {actual ? quantityCell(actual) : <td><span className="muted">{blank}</span></td>}
+            <td>{e.canceled || e.closed ? blank : fmt(balance)}</td>
+          </>}
+          <td><Badge label={label} tone={planningStatuses[label].tone}/></td>
           {internal && <td className="row-actions"><button className="icon-button" aria-label="Ações da programação" onClick={event=>{
             const rect = event.currentTarget.getBoundingClientRect();
             setMenuPosition({top:Math.min(rect.bottom,window.innerHeight-119),right:window.innerWidth-rect.right});
@@ -328,6 +336,7 @@ export default function Workspace() {
         <div className="page-heading"><div><h1>{tab}</h1><p>{panelDescriptions[tab]}</p></div>
           <div className="heading-actions">
             {!['Cadastros','Perfis de acesso','Histórico'].includes(tab) && <div className="month-control"><button aria-label="Mês anterior" onClick={()=>setMonth(nonce(month,-1))}><ChevronLeft size={15}/></button><label><CalendarDays size={16}/><span>{monthLabel(month)}</span><ChevronDown size={12}/><input type="month" aria-label="Selecionar mês" value={month} onChange={e=>{if(/^\d{4}-\d{2}$/.test(e.target.value))setMonth(e.target.value);}}/></label><button aria-label="Próximo mês" onClick={()=>setMonth(nonce(month,1))}><ChevronRight size={15}/></button></div>}
+            {planning && internal && <button className="button" onClick={()=>setOperation({kind:'calendar'})}><CalendarDays size={16}/> Feriados</button>}
             {(tab==='Visão geral'||tab==='Programação'&&internal) && <button className="button primary" onClick={primary}><Plus size={17}/>{primaryTitle}</button>}
             {tab==='Envios' && <button className="button primary" onClick={()=>setOperation({kind:'shipment'})}><Plus size={17}/> Registrar envio</button>}
             {tab==='Recebimentos' && internal && <button className="button primary" onClick={()=>setOperation({kind:'receipt'})}><Plus size={17}/> Registrar recebimento</button>}

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, Plus, Trash2, X } from 'lucide-react';
-import { allowed, calendarDays, catalogUnit, dateLabel, defaultCalendar, fmt, getSupplierDetails, MATERIAL_TYPES, monthLabel, received, REGISTERED_UNITS, round, type Data, type Profile, type Scope } from '@/lib/model';
+import { allowed, calendarDays, catalogUnit, dateLabel, defaultCalendar, fmt, getSupplierDetails, isHoliday, MATERIAL_TYPES, monthLabel, received, REGISTERED_UNITS, round, type Data, type Profile, type Scope } from '@/lib/model';
 
 const titles = {
   entry:'Editar programação', entryMonth:'Nova programação', receipt:'Registrar recebimento', shipment:'Registrar envio', cancel:'Cancelar programação',
@@ -24,6 +24,9 @@ function parseQuantity(value:string) {
   const text = value.trim();
   if (!/^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d+)?$/.test(text)) return NaN;
   return Number(text.replaceAll('.','').replace(',','.'));
+}
+function validPlannedQuantity(quantity:number) {
+  return Number.isFinite(quantity) && round(quantity)>=0.001 && quantity<=1e10;
 }
 function Field({label,children,wide=false}:{label:string;children:ReactNode;wide?:boolean}) {
   return <label className={wide?'wide':''}>{label}{children}</label>;
@@ -55,7 +58,10 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
   const existingConversion = kind==='conversion' && previousScope ? data.conversions.find(c=>c.supplier===previousScope.supplier&&c.material===previousScope.material) : undefined;
   const initialScope = kind==='conversion' ? previousScope : initial;
   const calendar = data.calendars[month] || defaultCalendar;
-  const planningDays = kind==='entryMonth' ? calendarDays(month) : [];
+  const planningDays = kind==='entryMonth' || kind==='calendar' ? calendarDays(month) : [];
+  const [dailyQuantities,setDailyQuantities] = useState<Record<string,string>>({});
+  const [holidays,setHolidays] = useState(calendar.holidays);
+  const [holidayDate,setHolidayDate] = useState('');
   const [supplier,setSupplier] = useState(initialScope?.supplier || '');
   const [material,setMaterial] = useState(initialScope?.material || '');
   const [unit,setUnit] = useState('');
@@ -70,6 +76,13 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(()=>{dialog.current?.showModal();},[]);
   const chosen = data.materials.find(m=>m.id===material);
+  const plannedEntries = kind==='entryMonth' && supplier && chosen ? planningDays.flatMap(({iso})=>{
+    const raw = dailyQuantities[iso]?.trim();
+    if (!raw || isHoliday(data,iso)) return [];
+    const quantity = parseQuantity(raw);
+    return quantity===0 ? [] : [{date:iso,quantity}];
+  }) : [];
+  const plannedTotal = round(plannedEntries.reduce((sum,{quantity})=>validPlannedQuantity(quantity)?sum+round(quantity):sum,0));
   const conversion = data.conversions.find(c=>c.supplier===supplier && c.material===material);
   const actualUnit = unit || chosen?.unit || '';
   const factor = actualUnit === chosen?.unit ? undefined : conversion;
@@ -101,20 +114,15 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
     const input:Record<string,unknown> = {...form,action:deleting && catalog ? catalog.deleteAction : kind,id,month,requestId:requestId.current};
     if (scoped) Object.assign(input,{supplier,material});
     if (kind==='entry') input.quantity = parseQuantity(String(form.quantity));
+    if (kind==='calendar') input.holidays = holidays.join('\n');
     if (kind==='entryMonth') {
-      const days = planningDays.flatMap(({iso})=>{
-        const raw = String(form[iso] ?? '').trim();
-        delete input[iso];
-        if (!raw) return [];
-        const quantity = parseQuantity(raw);
-        return quantity===0 ? [] : [{date:iso,quantity}];
-      });
-      const invalid = days.find(({quantity})=>!Number.isFinite(quantity) || round(quantity)<0.001 || quantity>1e10);
-      if (invalid || !days.length) {
+      planningDays.forEach(({iso})=>delete input[iso]);
+      const invalid = plannedEntries.find(({quantity})=>!validPlannedQuantity(quantity));
+      if (invalid || !plannedEntries.length) {
         setError(invalid ? 'Informe uma quantidade válida para '+dateLabel(invalid.date)+'.' : 'Informe a quantidade de pelo menos um dia.');
         return;
       }
-      input.days = days;
+      input.days = plannedEntries;
     }
     if (kind==='conversion' && !deleting) {
       input.factor = parseQuantity(String(form.factor));
@@ -144,17 +152,23 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
         </div>}
         {kind==='entryMonth'&&<fieldset className="planning-calendar" disabled={!supplier || !chosen || saving}>
           <legend>{monthLabel(month)}</legend>
-          <p className="info">{supplier && chosen ? 'Preencha os dias em que deseja programar entregas.' : 'Selecione o fornecedor e o material para preencher as quantidades.'}</p>
           <div className="planning-scroll">
             <div className="planning-grid">
-              {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(day=><span key={day} className="planning-weekday" aria-hidden="true">{day}</span>)}
-              {planningDays.map(({iso,day,weekday})=><label key={iso} className="planning-day"
-                style={day===1 ? {gridColumnStart:weekday+1} : undefined}>
-                <span>Dia {String(day).padStart(2,'0')}</span>
-                <input name={iso} inputMode="decimal" maxLength={18} placeholder="0,000" aria-label={`Quantidade em ${dateLabel(iso)}${chosen ? ' ('+chosen.unit+')' : ''}`}/>
-              </label>)}
+              {['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'].map(day=><span key={day} className="planning-weekday" aria-hidden="true">{day}</span>)}
+              {planningDays.map(({iso,day,weekday})=>{
+                const holiday = isHoliday(data,iso);
+                return <label key={iso} className={holiday?'planning-day planning-holiday':'planning-day'}
+                  style={day===1 ? {gridColumnStart:weekday+1} : undefined}>
+                  <span>Dia {String(day).padStart(2,'0')}</span>
+                  <input name={iso} inputMode="decimal" maxLength={18} placeholder="0,000" disabled={holiday} value={dailyQuantities[iso] ?? ''}
+                    onChange={event=>setDailyQuantities({...dailyQuantities,[iso]:event.target.value})}
+                    aria-label={`Quantidade em ${dateLabel(iso)}${chosen ? ' ('+chosen.unit+')' : ''}${holiday?' — feriado':''}`}/>
+                  {holiday&&<small>Feriado</small>}
+                </label>;
+              })}
             </div>
           </div>
+          <output className="planning-total">Total informado <strong>{fmt(plannedTotal)}{chosen ? ' '+chosen.unit : ''}</strong></output>
         </fieldset>}
         {kind==='entry'&&<div className="form-grid"><Field label="Data prevista"><Input name="date" type="date" initial={initial?.date || month+'-01'}/></Field><Field label={chosen?'Quantidade programada ('+chosen.unit+')':'Quantidade programada'}><Quantity initial={initial?.quantity}/></Field></div>}
         {(kind==='receipt'||kind==='shipment')&&<>
@@ -229,8 +243,19 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
           <Field label="Turnos"><Input name="shifts" type="number" initial={calendar.shifts}/></Field>
           <Field label="Dias de segunda a sexta"><Input name="weekdays" type="number" initial={calendar.weekdays} optional placeholder="Calcular automaticamente"/></Field>
           <Field label="Sábados"><Input name="saturdays" type="number" initial={calendar.saturdays} optional placeholder="Calcular automaticamente"/></Field>
-          <Field label="Feriados do mês" wide><textarea name="holidays" defaultValue={calendar.holidays.join('\n')} placeholder={month+'-01'} rows={5}/></Field>
-          <p className="info wide">Use o formato AAAA-MM-DD, uma data por linha.</p>
+          <div className="allocation wide">
+            <div className="allocation-title"><h3>Feriados de {monthLabel(month)}</h3></div>
+            <div className="holiday-controls">
+              <Field label="Data do feriado"><input type="date" value={holidayDate} onChange={event=>setHolidayDate(event.target.value)}/></Field>
+              <button type="button" className="button" disabled={!planningDays.some(day=>day.iso===holidayDate) || holidays.includes(holidayDate)}
+                onClick={()=>{setHolidays([...holidays,holidayDate].sort());setHolidayDate('');}}><Plus size={15}/> Adicionar feriado</button>
+            </div>
+            {holidays.length>0&&<ul className="holiday-list">{holidays.map(iso=><li key={iso}>
+              <time dateTime={iso}>{dateLabel(iso)}</time>
+              <button type="button" className="icon-button danger" aria-label={`Remover feriado de ${dateLabel(iso)}`}
+                onClick={()=>setHolidays(holidays.filter(day=>day!==iso))}><Trash2 size={15}/></button>
+            </li>)}</ul>}
+          </div>
         </div>}
         {kind==='cancel'&&<p>Cancelar a programação de {initial?.supplier} em {initial?dateLabel(initial.date):''}? O registro ficará disponível no histórico.</p>}
         {kind==='publish'&&<p>Salvar uma versão de {monthLabel(month)} para divulgação? Ela preservará as quantidades, os materiais e o calendário atuais.</p>}

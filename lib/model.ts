@@ -62,6 +62,9 @@ export function calendarDays(month: string) {
       label: date.toLocaleDateString('pt-BR',{weekday:'long',timeZone:'UTC'})};
   });
 }
+export function isHoliday(data:Data,date:string) {
+  return data.calendars[date.slice(0,7)]?.holidays.includes(date) ?? false;
+}
 export function workdays(month: string, calendar: Calendar) {
   const days = calendarDays(month).filter(d => !calendar.holidays.includes(d.iso));
   const weekdays = calendar.weekdays ?? days.filter(d => d.weekday > 0 && d.weekday < 6).length;

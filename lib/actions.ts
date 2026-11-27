@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { allowed, catalogUnit, defaultCalendar, getSupplierDetails, MATERIAL_TYPES, received, round, type Data, type Profile, type Scope, type Allocation, type Conversion, type SupplierDetails } from './model';
+import { allowed, catalogUnit, defaultCalendar, getSupplierDetails, isHoliday, MATERIAL_TYPES, dateLabel, received, round, type Data, type Profile, type Scope, type Allocation, type Conversion, type SupplierDetails } from './model';
 import { demo, isConfiguredAdmin, UserError } from './server';
 type Input = Record<string, unknown>;
 const value = (input:Input,key:string) => typeof input[key] === 'string' ? String(input[key]).trim() : '';
@@ -85,6 +85,8 @@ export function apply(data:Data,profile:Profile,input:Input) {
       const quantity = round(number(input,'quantity'));
       need(quantity > 0,'Informe uma quantidade de pelo menos 0,001.');
       const plannedDate = date(input,'date');
+      const retainsDelivery = previous?.date===plannedDate && same(previous,item);
+      need(retainsDelivery || !isHoliday(data,plannedDate),`Não é possível programar entregas no feriado de ${dateLabel(plannedDate)}.`);
       if (previous) {
         const actual = received(data,previous.id);
         need(!actual || (same(previous,item) && quantity >= actual),'A programação deve preservar as baixas já registradas.');
@@ -106,6 +108,7 @@ export function apply(data:Data,profile:Profile,input:Input) {
         const fields = day as Input;
         const plannedDate = date(fields,'date');
         need(plannedDate.startsWith(selected+'-') && !seen.has(plannedDate),'Use dias distintos do mês selecionado.');
+        need(!isHoliday(data,plannedDate),`Não é possível programar entregas no feriado de ${dateLabel(plannedDate)}.`);
         seen.add(plannedDate);
         const quantity = round(number(fields,'quantity'));
         need(quantity > 0,'Informe uma quantidade de pelo menos 0,001.');
