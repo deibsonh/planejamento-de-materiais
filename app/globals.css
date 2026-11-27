@@ -151,7 +151,10 @@ td strong{color:var(--ink);font-weight:675}
 td.empty{text-align:center;color:var(--muted);padding:34px 12px}
 .date-cell{font-variant-numeric:tabular-nums}
 .date-cell small{display:block;margin-top:3px;font-size:10px}
-.planning-filter{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;font-weight:650}
+.planning-filter{display:grid;gap:4px;min-width:0;color:var(--muted);font-size:12px;font-weight:650}
+.planning-filter select{max-width:100%}
+.planning-table .tools{align-items:end}
+.planning-table .actions-heading{text-align:right}
 .material-cell{display:flex;align-items:center;gap:8px}
 .material-cell small{display:block;color:var(--muted);font-size:10px;margin-top:2px}
 .profile-role-note{display:block;color:var(--muted);font-size:11px;margin-top:3px}

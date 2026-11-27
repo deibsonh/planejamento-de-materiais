@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowDownToLine, ArrowLeftRight, ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Clock3, Ellipsis, FileText, History, LayoutDashboard, LogOut, Menu, Package, PackageCheck, Pencil, Plus, Search, Settings2, SlidersHorizontal, Trash2, Truck, Users, X } from 'lucide-react';
-import { dateLabel, defaultCalendar, fmt, getSupplierDetails, monthLabel, received, round, currentMonth, workdays, type Data, type Entry, type Profile } from '@/lib/model';
+import { ArrowDownToLine, ArrowLeftRight, ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, Clock3, Container, Ellipsis, FileText, Flame, FlaskConical, Fuel, Gem, Grid3x3, Grip, History, Hourglass, LayoutDashboard, LogOut, Menu, Mountain, Package, PackageCheck, Pencil, Plus, Search, Settings2, Shapes, SlidersHorizontal, SprayCan, Trash2, TreePine, Truck, Users, X, type LucideIcon } from 'lucide-react';
+import { dateLabel, defaultCalendar, fmt, getSupplierDetails, monthLabel, received, round, currentMonth, workdays, type Data, type Entry, type MaterialType, type Profile } from '@/lib/model';
 import { demoMonth } from '@/lib/seed';
 import { OperationForm, type Operation } from './workspace-forms';
 
@@ -33,7 +33,15 @@ const nonce = (month:string, diff:number) => {
 const planningStatuses = {
   Pendente:'blue', Parcial:'amber', Encerrado:'green', Cancelado:'gray'
 } as const;
-const weekdayFormatter = new Intl.DateTimeFormat('pt-BR',{weekday:'short',timeZone:'UTC'});
+const weekdayFormatter = new Intl.DateTimeFormat('pt-BR',{weekday:'long',timeZone:'UTC'});
+const materialIcons:Record<MaterialType,LucideIcon> = {
+  Cimento:Container, Pedra:Mountain, Areia:Hourglass, Aditivo:FlaskConical, Sílica:Gem, Coque:Flame,
+  'CA-50':Grip, 'CA-60':Grid3x3, Desmoldante:SprayCan, Combustível:Fuel, Madeira:TreePine, Arruela:CircleDot, Outro:Shapes
+};
+function MaterialIcon({type}:{type?:MaterialType}) {
+  const Icon = type ? materialIcons[type] ?? Package : Package;
+  return <span className="material-icon" title={type}><Icon size={15} aria-hidden="true"/></span>;
+}
 function status(e:Entry, actual:number): keyof typeof planningStatuses {
   if (e.canceled) return 'Cancelado';
   if (e.closed || actual >= e.quantity) return 'Encerrado';
@@ -44,7 +52,7 @@ function Badge({label,tone}:{label:string;tone:string}) {
   return <span className={'badge '+tone}><i/>{label}</span>;
 }
 function Table({columns,children,empty,emptyLabel='Nenhum registro para os filtros selecionados.'}:{columns:string[];children:ReactNode;empty?:boolean;emptyLabel?:string}) {
-  return <div className="table-scroll"><table><thead><tr>{columns.map((c,i)=><th key={i}>{c}</th>)}</tr></thead><tbody>
+  return <div className="table-scroll"><table><thead><tr>{columns.map((c,i)=><th key={i} className={c==='Ações'?'actions-heading':undefined}>{c}</th>)}</tr></thead><tbody>
     {empty ? <tr><td colSpan={columns.length} className="empty">{emptyLabel}</td></tr> : children}
   </tbody></table></div>;
 }
@@ -220,24 +228,26 @@ export default function Workspace() {
   const primaryTitle = internal ? 'Nova programação':'Registrar envio';
   const primary = ()=>setOperation({kind:internal?'entryMonth':'shipment'});
   function toolbar() {
-    return <div className="tools"><div className="search"><Search size={16}/><input aria-label="Buscar material ou fornecedor" placeholder="Buscar material ou fornecedor…" value={query} onChange={e=>setQuery(e.target.value)}/></div>
-      {planning ? <label className="planning-filter">Situação<select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+    const materialSelect = <select aria-label={planning?undefined:'Filtrar material'} value={filter} onChange={e=>setFilter(e.target.value)}>
+      <option value="">Todos os materiais</option>{Array.from(materials.values(),m=><option key={m.id} value={m.id}>{m.name}</option>)}
+    </select>;
+    if (planning) return <div className="tools">
+      <label className="planning-filter">Material{materialSelect}</label>
+      <label className="planning-filter">Situação<select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
         <option value="">Todas</option>{Object.keys(planningStatuses).map(label=><option key={label}>{label}</option>)}
-      </select></label> :
-        <button className={'button '+(showFilters||filter?'selected':'')} onClick={()=>setShowFilters(!showFilters)}><SlidersHorizontal size={15}/> Filtros</button>}
-      {(planning || showFilters) && <label className={planning?'planning-filter':undefined}>
-        {planning && 'Material'}
-        <select aria-label={planning?undefined:'Filtrar material'} value={filter} onChange={e=>setFilter(e.target.value)}>
-          <option value="">Todos os materiais</option>{Array.from(materials.values(),m=><option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
-      </label>}
+      </select></label>
+    </div>;
+    return <div className="tools">
+      <div className="search"><Search size={16}/><input aria-label="Buscar material ou fornecedor" placeholder="Buscar material ou fornecedor…" value={query} onChange={e=>setQuery(e.target.value)}/></div>
+      <button className={'button '+(showFilters||filter?'selected':'')} onClick={()=>setShowFilters(!showFilters)}><SlidersHorizontal size={15}/> Filtros</button>
+      {showFilters && materialSelect}
     </div>;
   }
   function planningTable() {
-    return <Table columns={[planning?'Entrega':'Data prevista','Material','Fornecedor','Programado','Recebido','Saldo','Situação',...(internal?['']:[])]} empty={!visibleEntries.length}>
+    return <Table columns={[planning?'Entrega':'Data prevista','Material','Fornecedor','Programado','Recebido','Saldo','Situação',...(internal?[planning?'Ações':'']:[])]} empty={!visibleEntries.length}>
       {visibleEntries.map(({entry:e,actual,label})=>{
         const material=materials.get(e.material);
-        return <tr key={e.id}><td className="date-cell"><time dateTime={e.date}>{dateLabel(e.date)}{planning&&<small>{weekdayFormatter.format(new Date(e.date)).slice(0,3)}</small>}</time></td><td><div className="material-cell"><span className="material-icon"><Package size={15}/></span><div><strong>{material?.name || e.material}</strong><small>{e.material}</small></div></div></td>
+        return <tr key={e.id}><td className="date-cell"><time dateTime={e.date}>{dateLabel(e.date)}{planning&&<small>{weekdayFormatter.format(new Date(e.date))}</small>}</time></td><td><div className="material-cell"><MaterialIcon type={material?.type}/><div><strong>{material?.name || e.material}</strong><small>{e.material}</small></div></div></td>
           <td>{e.supplier}</td><td><strong>{fmt(e.quantity)}</strong> <span className="muted">{material?.unit}</span></td>
           <td>{actual ? <><strong>{fmt(actual)}</strong> <span className="muted">{material?.unit}</span></> : <span className="muted">{blank}</span>}</td>
           <td>{e.canceled || e.closed ? blank : fmt(Math.max(0,round(e.quantity-actual)))}</td><td><Badge label={label} tone={planningStatuses[label]}/></td>
@@ -249,7 +259,7 @@ export default function Workspace() {
             {menuId===e.id && <div className="pop row-pop" style={menuPosition}>
               <button onClick={()=>{setOperation({kind:'entry',id:e.id});setMenuId('');}} disabled={e.canceled||e.closed}>Editar programação</button>
               <button onClick={()=>{setOperation({kind:'receipt',id:e.id});setMenuId('');}} disabled={e.canceled||e.closed||actual>=e.quantity}>Registrar recebimento</button>
-              <button className="danger" onClick={()=>{setOperation({kind:'cancel',id:e.id});setMenuId('');}} disabled={e.canceled||e.closed||actual>=e.quantity}>Cancelar linha</button>
+              <button className="danger" onClick={()=>{setOperation({kind:'cancel',id:e.id});setMenuId('');}} disabled={e.canceled||e.closed||actual>=e.quantity}>Cancelar programação</button>
             </div>}</td>}
         </tr>;
       })}
@@ -291,7 +301,7 @@ export default function Workspace() {
           <section className="hero"><div className="hero-content"><span className="hero-kicker"><CalendarDays size={14}/> PROGRAMAÇÃO MENSAL</span><h2>{monthLabel(month)}</h2><p>{open.length ? `${open.length} ${open.length===1?'linha com saldo pendente':'linhas com saldo pendente'} na programação.` : 'Nenhuma entrega pendente neste mês.'}</p><button onClick={()=>go('Programação')}>Ver programação <ArrowRight size={15}/></button></div><HeroArt/></section>
           <section className="metrics" aria-label="Indicadores do mês">{counts.map(({label,value,caption,icon:Icon,tone})=><article key={label} className="metric"><span className={'metric-icon '+tone}><Icon size={19}/></span><div className="metric-value">{value.toLocaleString('pt-BR')}</div><h3>{label}</h3><p>{caption}</p></article>)}</section>
         </>}
-        {(tab==='Visão geral'||tab==='Programação')&& <section className="panel">
+        {(tab==='Visão geral'||planning)&& <section className={planning?'panel planning-table':'panel'}>
           <div className="panel-heading"><div><h2>{tab==='Visão geral'?'Entregas programadas':'Programação do mês'}</h2><p>Quantidade planejada, recebida e situação por linha.</p></div>{toolbar()}</div>
           {planningTable()}
           <div className="panel-footer"><span>{visibleEntries.length} de {ordered.length} registros</span>{tab==='Visão geral'&& <button className="text-button" onClick={()=>go('Programação')}>Ver programação completa <ArrowRight size={15}/></button>}</div>
@@ -328,7 +338,7 @@ export default function Workspace() {
             </div>
             <Table columns={['Código','Material','Tipo','Unidade','Ações']} empty={!data.materials.length}>
               {data.materials.map(m=><tr key={m.id}>
-                <td>{m.id}</td><td><strong>{m.name}</strong></td><td>{m.type ?? 'Sem tipo definido'}</td><td>{m.unit}</td>
+                <td>{m.id}</td><td><strong>{m.name}</strong></td><td><span className="material-cell"><MaterialIcon type={m.type}/>{m.type ?? 'Sem tipo definido'}</span></td><td>{m.unit}</td>
                 <td><CatalogActions operation={{kind:'material',id:m.id}} label={`material ${m.name} (${m.id})`} onOpen={setOperation}/></td>
               </tr>)}
             </Table>
