@@ -75,7 +75,7 @@ const administrationActions = new Set([
 ]);
 const historyCategories:Partial<Record<string,HistoryCategory>> = {
   entry:'Programação',entryMonth:'Programação',cancel:'Programação',
-  shipment:'Envios',duplicate:'Envios',receipt:'Recebimentos',
+  shipment:'Entregas',duplicate:'Entregas',receipt:'Recebidos',
   material:'Cadastros',deleteMaterial:'Cadastros',supplier:'Cadastros',deleteSupplier:'Cadastros',
   conversion:'Cadastros',deleteConversion:'Cadastros',holiday:'Cadastros',setHolidayActive:'Cadastros',deleteHoliday:'Cadastros',
   profile:'Perfis de acesso',resetPassword:'Perfis de acesso',setProfileActive:'Perfis de acesso',revoke:'Perfis de acesso',
@@ -189,24 +189,25 @@ export function apply(data:Data,profile:Profile,input:Input) {
     case 'shipment': {
       const item = scope(data,input,profile);
       const shipment = {...item,id,date:date(input,'date'),arrival:value(input,'arrival') ? date(input,'arrival') : '',
-        quantity:number(input,'quantity'),unit:required(input,'unit','a unidade'),nf:value(input,'nf'),author};
+        quantity:number(input,'quantity'),unit:required(input,'unit','a unidade'),nf:value(input,'nf'),freight:value(input,'freight'),author};
+      need(shipment.freight.length <= 180,'Informe um número de frete com até 180 caracteres.');
       const orderUnit = data.materials.find(m => m.id === item.material)!.unit;
       const conversion = shipment.unit === orderUnit ? undefined : data.conversions.find(c=>same(c,item) && c.unit===shipment.unit);
       need(shipment.unit === orderUnit || conversion,'Unidade sem conversão cadastrada.');
       const converted = round(!conversion ? shipment.quantity : conversion.operation==='divide' ? shipment.quantity/conversion.factor : shipment.quantity*conversion.factor);
       need(Number.isFinite(converted) && converted > 0 && converted <= 1e10,'A quantidade convertida precisa ser válida.');
-      need(!shipment.arrival || shipment.arrival >= shipment.date,'A previsão de chegada deve ser igual ou posterior ao envio.');
+      need(!shipment.arrival || shipment.arrival >= shipment.date,'A previsão de chegada deve ser igual ou posterior à expedição.');
       data.shipments.push({...shipment,converted});
-      log = `Registrou envio de ${shipment.quantity} ${shipment.unit} · ${item.supplier} · ${shipment.date}`;
+      log = `Registrou entrega de ${shipment.quantity} ${shipment.unit} · ${item.supplier} · ${shipment.date}`;
       break;
     }
     case 'duplicate': {
       const source = data.shipments.find(s => s.id === value(input,'id'));
       const target = data.shipments.find(s => s.id === value(input,'target'));
-      need(source && target && source !== target && same(source,target) && !source.duplicateOf && !target.duplicateOf,'Escolha dois registros de envio do mesmo fornecedor e material.');
-      need(!data.shipments.some(s => s.duplicateOf === source.id) && !data.receipts.some(r => r.shipment === source.id),'Este envio já possui um vínculo. Selecione-o como o registro principal.');
+      need(source && target && source !== target && same(source,target) && !source.duplicateOf && !target.duplicateOf,'Escolha dois registros de entrega do mesmo fornecedor e material.');
+      need(!data.shipments.some(s => s.duplicateOf === source.id) && !data.receipts.some(r => r.shipment === source.id),'Esta entrega já possui um vínculo. Selecione-o como o registro principal.');
       source.duplicateOf = target.id;
-      log = `Vinculou os envios de ${source.author} e ${target.author} · ${source.supplier}`;
+      log = `Vinculou as entregas de ${source.author} e ${target.author} · ${source.supplier}`;
       break;
     }
     case 'receipt': {
@@ -219,7 +220,7 @@ export function apply(data:Data,profile:Profile,input:Input) {
       const converted = round(!conversion ? quantity : conversion.operation === 'divide' ? quantity / conversion.factor : quantity * conversion.factor);
       need(Number.isFinite(converted) && converted > 0 && converted <= 1e10,'A quantidade convertida precisa ser válida.');
       const shipment = value(input,'shipment');
-      need(!shipment || data.shipments.some(s => s.id === shipment && same(s,item) && !s.duplicateOf),'Envio inválido para esse recebimento.');
+      need(!shipment || data.shipments.some(s => s.id === shipment && same(s,item) && !s.duplicateOf),'Entrega inválida para esse recebimento.');
       need(Array.isArray(input.allocations) && input.allocations.length > 0,'Escolha pelo menos uma linha para baixar.');
       const seen = new Set<string>();
       const allocations:Allocation[] = input.allocations.map((allocation:Input) => {
@@ -240,7 +241,7 @@ export function apply(data:Data,profile:Profile,input:Input) {
       const receipt = {...item,id,date:date(input,'date'),quantity,invoicedQuantity,unit,converted,factor:conversion?.factor || 1,
         operation:conversion?.operation || 'identity',nf:value(input,'nf'),freight:value(input,'freight'),shipment,allocations,author};
       data.receipts.push(receipt);
-      log = `Registrou recebimento de ${converted} ${material.unit} · ${item.supplier} · ${receipt.date}`;
+      log = `Registrou material recebido de ${converted} ${material.unit} · ${item.supplier} · ${receipt.date}`;
       break;
     }
     case 'material': {
@@ -259,7 +260,7 @@ export function apply(data:Data,profile:Profile,input:Input) {
       const description = `${code} · ${name} (${unit})${type ? ' · '+type : ''}`;
       if (previous) {
         if (!sameUnit(previous.unit,unit)) {
-          need(!usedInOperations(data,'material',key),'A unidade deste material está vinculada a quantidades registradas na programação, em envios ou em recebimentos.');
+          need(!usedInOperations(data,'material',key),'A unidade deste material está vinculada a quantidades registradas na programação, em entregas ou em recebimentos.');
           need(!data.conversions.some(c=>c.material===key),'Exclua as conversões vinculadas antes de alterar a unidade do material.');
         }
         renameReferences(data,'material',key,code);
@@ -275,7 +276,7 @@ export function apply(data:Data,profile:Profile,input:Input) {
       const key = value(input,'id');
       const material = data.materials.find(m=>m.id===key);
       need(material,'Material não encontrado.');
-      need(!hasCatalogLinks(data,'material',key),'Este material está vinculado à programação, a envios, recebimentos, conversões ou perfis de acesso.');
+      need(!hasCatalogLinks(data,'material',key),'Este material está vinculado à programação, a entregas, recebimentos, conversões ou perfis de acesso.');
       data.materials = data.materials.filter(m=>m!==material);
       log = `Excluiu material ${material.id} · ${material.name}`;
       break;
@@ -310,7 +311,7 @@ export function apply(data:Data,profile:Profile,input:Input) {
     case 'deleteSupplier': {
       const key = value(input,'id');
       need(data.suppliers.includes(key),'Fornecedor não encontrado.');
-      need(!hasCatalogLinks(data,'supplier',key),'Este fornecedor está vinculado à programação, a envios, recebimentos, conversões ou perfis de acesso.');
+      need(!hasCatalogLinks(data,'supplier',key),'Este fornecedor está vinculado à programação, a entregas, recebimentos, conversões ou perfis de acesso.');
       data.suppliers = data.suppliers.filter(s=>s!==key);
       if (data.supplierDetails) delete data.supplierDetails[key];
       log = 'Excluiu fornecedor ' + key;

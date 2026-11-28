@@ -10,14 +10,17 @@ export type MaterialType = typeof MATERIAL_TYPES[number];
 export type Material = { id: string; name: string; unit: string; type?: MaterialType };
 export type SupplierDetails = { code: string; responsible: string; email: string; contact: string };
 export type Entry = Scope & { id: string; date: string; quantity: number; canceled?: boolean; closed?: boolean };
-export type Shipment = Scope & { id: string; date: string; arrival: string; quantity: number; unit: string; nf: string; author: string; converted?: number; duplicateOf?: string };
+export type Shipment = Scope & { id: string; date: string; arrival: string; quantity: number; unit: string; nf: string; freight?: string; author: string; converted?: number; duplicateOf?: string };
+export function deliveryDate(shipment:Shipment) {
+  return shipment.arrival || shipment.date;
+}
 export type Allocation = { entry: string; quantity: number; close: boolean };
 export type Receipt = Scope & { id: string; date: string; quantity: number; unit: string; converted: number; factor: number; operation: string; invoicedQuantity?: number; nf: string; freight: string; shipment: string; allocations: Allocation[]; author: string };
 export type Conversion = Scope & { unit: string; factor: number; operation: 'divide' | 'multiply' };
 export type Holiday = {date:string; description:string; active:boolean; annual?:boolean};
 export type Calendar = { holidays: string[]; shifts: number; weekdays?: number; saturdays?: number };
 export type Publication = { id: string; month: string; date: string; entries: Entry[]; calendar: Calendar; materials: Material[] };
-export const HISTORY_CATEGORIES = ['Programação','Envios','Recebimentos','Cadastros','Perfis de acesso','PDF mensal','Outros'] as const;
+export const HISTORY_CATEGORIES = ['Programação','Entregas','Recebidos','Cadastros','Perfis de acesso','PDF mensal','Outros'] as const;
 export type HistoryCategory = typeof HISTORY_CATEGORIES[number];
 export type HistoryRecord = {
   id:string; category:HistoryCategory; date:string; author:string; detail:string; requestId?:string; email?:string;

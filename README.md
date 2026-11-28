@@ -1,6 +1,6 @@
 # Planejamento de Materiais
 
-A plataforma registra programação mensal, envios dos parceiros e recebimentos de materiais. A baixa vincula uma entrega a uma ou mais linhas da programação, com conversão por fornecedor e material. O PDF de divulgação usa as quantidades programadas e o calendário da versão selecionada.
+A plataforma registra programação mensal, entregas dos parceiros e materiais recebidos. A baixa vincula uma entrega a uma ou mais linhas da programação, com conversão por fornecedor e material. O PDF de divulgação usa as quantidades programadas e o calendário da versão selecionada.
 
 ## Demonstração local
 
@@ -35,4 +35,4 @@ A base de produção começa vazia. Emissões do PDF podem usar a programação 
 | Nível 2 - Auxiliar | Sem acesso à Administração |
 | Nível 1 - Terceiro | Sem acesso ao PDF mensal |
 
-Cada nível inferior acumula as restrições dos níveis acima. Novos perfis de terceiros consultam registros e lançam envios para as combinações de fornecedor e material autorizadas. Perfis existentes de operação aparecem no nível 1 e preservam as permissões já cadastradas.
+Cada nível inferior acumula as restrições dos níveis acima. Novos perfis de terceiros consultam registros e registram entregas para as combinações de fornecedor e material autorizadas. Perfis existentes de operação aparecem no nível 1 e preservam as permissões já cadastradas.

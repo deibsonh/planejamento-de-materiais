@@ -50,14 +50,14 @@ function db() {
   return createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SECRET_KEYS,{auth:{persistSession:false,autoRefreshToken:false}});
 }
 const demoFile = '.data/planejamento.json';
-type StoredHistory = Omit<HistoryRecord,'id'|'category'> & Partial<Pick<HistoryRecord,'id'|'category'>>;
+type StoredHistory = Omit<HistoryRecord,'id'|'category'> & {id?:string;category?:HistoryCategory|'Envios'|'Recebimentos'};
 type StoredData = Omit<Data,'profiles'|'history'> & {
   profiles:(Omit<Profile,'role'> & {role:string})[];
   history:StoredHistory[];
 };
 function legacyHistoryCategory(detail:string):HistoryCategory {
-  if (/^(Registrou envio|Vinculou os envios)/.test(detail)) return 'Envios';
-  if (/^Registrou recebimento/.test(detail)) return 'Recebimentos';
+  if (/^(Registrou (envio|entrega)|Vinculou (os envios|as entregas))/.test(detail)) return 'Entregas';
+  if (/^Registrou (recebimento|material recebido)/.test(detail)) return 'Recebidos';
   if (/^(Publicou programação|Atualizou calendário)/.test(detail)) return 'PDF mensal';
   if (/^(Redefiniu a senha|(?:Alterou|Cadastrou|Revogou|Desativou|Reativou) (?:o )?acesso)/.test(detail)) return 'Perfis de acesso';
   if (/^(Alterou|Cadastrou|Excluiu|Reativou|Desativou) (material |fornecedor |conversão |feriado )/.test(detail)) return 'Cadastros';
@@ -75,7 +75,8 @@ function normalizeWorkspace(data:StoredData):Data {
       occurrences.set(fingerprint,occurrence);
       id = fingerprint+'-'+occurrence;
     }
-    return {...record,id,category:record.category ?? legacyHistoryCategory(record.detail)};
+    const category = record.category==='Envios' ? 'Entregas' : record.category==='Recebimentos' ? 'Recebidos' : record.category;
+    return {...record,id,category:category ?? legacyHistoryCategory(record.detail)};
   });
   return {...data,history,profiles:data.profiles.map(p=>({...p,role:normalizeProfileRole(p.role) ?? 'partner'}))};
 }

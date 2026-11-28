@@ -1,19 +1,19 @@
 'use client';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, Plus, Trash2, X } from 'lucide-react';
-import { allowed, calendarDays, catalogUnit, dateLabel, getCalendar, fmt, getSupplierDetails, hasOperationalAccess, listHolidays, MATERIAL_TYPES, monthLabel, received, REGISTERED_UNITS, round, type Data, type Profile, type Scope } from '@/lib/model';
+import { allowed, calendarDays, catalogUnit, dateLabel, deliveryDate, getCalendar, fmt, getSupplierDetails, hasOperationalAccess, listHolidays, MATERIAL_TYPES, monthLabel, received, REGISTERED_UNITS, round, type Data, type Profile, type Scope } from '@/lib/model';
 
 const permanentDeletionTitles = {
   deleteEntry:'Excluir programação definitivamente',
-  deleteShipment:'Excluir envio definitivamente',
+  deleteShipment:'Excluir entrega definitivamente',
   deleteReceipt:'Excluir recebimento definitivamente',
   clearHistory:'Limpar histórico'
 } as const;
 const titles = {
   ...permanentDeletionTitles,
-  entry:'Editar programação', entryMonth:'Nova programação', receipt:'Registrar recebimento', shipment:'Registrar envio', cancel:'Cancelar programação',
+  entry:'Editar programação', entryMonth:'Nova programação', receipt:'Registrar material recebido', shipment:'Registrar entrega', cancel:'Cancelar programação',
   material:'Novo material', supplier:'Novo fornecedor', conversion:'Cadastrar conversão', profile:'Configurar perfil',
-  calendar:'Calendário do mês', holiday:'Novo feriado', publish:'Salvar versão da programação', duplicate:'Vincular envios',
+  calendar:'Calendário do mês', holiday:'Novo feriado', publish:'Salvar versão da programação', duplicate:'Vincular entregas',
   receiptDetails:'Detalhes do recebimento', revoke:'Revogar acesso', resetPassword:'Redefinir senha', setProfileActive:'Desativar acesso', setHolidayActive:'Desativar feriado'
 };
 const catalogOperations = {
@@ -202,14 +202,14 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
         {kind==='entry'&&<div className="form-grid"><Field label="Data prevista"><Input name="date" type="date" initial={initial?.date || month+'-01'}/></Field><Field label={chosen?'Quantidade programada ('+chosen.unit+')':'Quantidade programada'}><Quantity initial={initial?.quantity}/></Field></div>}
         {(kind==='receipt'||kind==='shipment')&&<>
           <div className="form-grid">
-            <Field label={kind==='receipt'?'Data real do recebimento':'Data de expedição'}><Input name="date" type="date" initial={today()}/></Field>
-            {kind==='shipment'&&<Field label="Previsão de chegada"><Input name="arrival" type="date" optional/></Field>}
-            <Field label={kind==='receipt'?'Quantidade recebida':'Quantidade enviada'}><input value={quantity} onChange={e=>setQuantity(e.target.value)} inputMode="decimal" placeholder="0,000" required/></Field>
-            <Field label="Unidade"><select value={actualUnit} onChange={e=>setUnit(e.target.value)} required><option value="">Selecione</option>{unitOptions.map(u=><option key={u}>{u}</option>)}</select></Field>
-            <Field label="Nota fiscal"><input name="nf" value={nf} onChange={e=>setNf(e.target.value)} maxLength={180} placeholder="Opcional"/></Field>
-            {kind==='receipt'&&<><Field label="Número do frete"><Input name="freight" optional placeholder="Opcional"/></Field>
+            <Field label={kind==='receipt'?'Data real do recebimento':'Data de entrega'}><Input name="date" type="date" initial={today()}/></Field>
+            <Field label={kind==='receipt'?'Quantidade recebida':'Quantidade na nota fiscal'}><input value={quantity} onChange={e=>setQuantity(e.target.value)} inputMode="decimal" placeholder="0,000" required/></Field>
+            <Field label={kind==='shipment'?'Unidade na nota fiscal':'Unidade'}><select value={actualUnit} onChange={e=>setUnit(e.target.value)} required><option value="">Selecione</option>{unitOptions.map(u=><option key={u}>{u}</option>)}</select></Field>
+            <Field label={kind==='shipment'?'Número da nota fiscal':'Nota fiscal'}><input name="nf" value={nf} onChange={e=>setNf(e.target.value)} maxLength={180} placeholder="Opcional"/></Field>
+            <Field label="Número do frete"><Input name="freight" optional placeholder="Opcional"/></Field>
+            {kind==='receipt'&&<>
               {nf.trim()&&<Field label={actualUnit?'Quantidade na NF ('+actualUnit+')':'Quantidade na NF'}><input name="invoicedQuantity" inputMode="decimal" placeholder="Opcional"/></Field>}
-              <Field label="Envio correspondente" wide><select name="shipment"><option value="">Sem vínculo com um envio</option>{shipmentOptions.map(s=><option key={s.id} value={s.id}>{dateLabel(s.date)} · {fmt(s.quantity)} {s.unit} · {s.nf?'NF '+s.nf:s.author}</option>)}</select></Field></>}
+              <Field label="Entrega correspondente" wide><select name="shipment"><option value="">Sem vínculo com uma entrega</option>{shipmentOptions.map(s=><option key={s.id} value={s.id}>{dateLabel(deliveryDate(s))} · {fmt(s.quantity)} {s.unit} · {s.nf?'NF '+s.nf:s.author}</option>)}</select></Field></>}
           </div>
           {kind==='receipt'&& <div className="allocation">
             <div className="allocation-title"><div><h3>Baixas na programação</h3><p>Selecione as linhas e distribua a quantidade recebida.</p></div></div>
@@ -287,7 +287,7 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
         </div>}
         {permanentDeletion&&<>
           {kind==='deleteEntry'&&<p>A programação de <strong>{initial?.supplier}</strong> em {initial && dateLabel(initial.date)} será removida também das versões de PDF disponíveis no portal. Exclua os recebimentos vinculados primeiro.</p>}
-          {kind==='deleteShipment'&&<p>O envio de <strong>{shipment?.supplier}</strong> em {shipment && dateLabel(shipment.date)} será excluído. Os registros vinculados serão mantidos e ficarão sem o vínculo com esse envio.</p>}
+          {kind==='deleteShipment'&&<p>A entrega de <strong>{shipment?.supplier}</strong> em {shipment && dateLabel(shipment.date)} será excluída. Os registros vinculados serão mantidos e ficarão sem o vínculo com essa entrega.</p>}
           {kind==='deleteReceipt'&&<p>O recebimento de <strong>{receipt?.supplier}</strong> em {receipt && dateLabel(receipt.date)} será excluído e suas baixas serão estornadas.</p>}
           {kind==='clearHistory'&&<p>{operation.historyIds.length===1
             ? 'O registro selecionado será apagado do histórico.'
@@ -303,8 +303,8 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
         {kind==='revoke'&&<p>Revogar o acesso de <b>{existingProfile?.name}</b>? O histórico dos lançamentos continuará disponível</p>}
         {kind==='setProfileActive'&&<p>{title} de <strong>{existingProfile?.name}</strong>? {!operation.active&&'As sessões desse perfil serão encerradas.'}</p>}
         {kind==='setHolidayActive'&&<p>{title} <strong>{catalogName}</strong>?</p>}
-        {kind==='duplicate'&&<><p>Selecione o envio principal desta carga. O registro de {shipment?.author} permanecerá no histórico e será contado junto dele.</p>
-          <Field label="Envio principal"><select name="target" required><option value="">Selecione</option>{data.shipments.filter(s=>s.id!==id&&s.supplier===shipment?.supplier&&s.material===shipment?.material&&!s.duplicateOf).map(s=><option key={s.id} value={s.id}>{dateLabel(s.date)} · {fmt(s.quantity)} {s.unit} · {s.author}{s.nf?' · NF '+s.nf:''}</option>)}</select></Field></>}
+        {kind==='duplicate'&&<><p>Selecione a entrega principal desta carga. O registro de {shipment?.author} permanecerá no histórico e será contado junto dela.</p>
+          <Field label="Entrega principal"><select name="target" required><option value="">Selecione</option>{data.shipments.filter(s=>s.id!==id&&s.supplier===shipment?.supplier&&s.material===shipment?.material&&!s.duplicateOf).map(s=><option key={s.id} value={s.id}>{dateLabel(deliveryDate(s))} · {fmt(s.quantity)} {s.unit} · {s.author}{s.nf?' · NF '+s.nf:''}</option>)}</select></Field></>}
         {kind==='receiptDetails'&&receipt&&<div className="details">
           <p><strong>{data.materials.find(m=>m.id===receipt.material)?.name}</strong> · {receipt.supplier} · {dateLabel(receipt.date)}</p>
           <p>Recebido: {fmt(receipt.quantity)} {receipt.unit} <ArrowRight size={14}/> {fmt(receipt.converted)} {data.materials.find(m=>m.id===receipt.material)?.unit}</p>
