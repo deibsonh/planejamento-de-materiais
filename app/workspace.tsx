@@ -542,7 +542,7 @@ export default function Workspace() {
             <div className="tools history-filters" role="group" aria-label="Filtros do histórico">
               <input type="search" aria-label="Responsável" placeholder="Buscar responsável" value={historyFilters.author}
                 onChange={e=>setHistoryFilter('author',e.target.value)}/>
-              <input type="search" aria-label="Data" placeholder="Buscar data (dd/mm/aaaa)" value={historyFilters.date}
+              <input type="search" aria-label="Data" placeholder="Buscar data" value={historyFilters.date}
                 onChange={e=>setHistoryFilter('date',e.target.value)}/>
               <input type="search" aria-label="Tipo" placeholder="Buscar tipo" value={historyFilters.category}
                 onChange={e=>setHistoryFilter('category',e.target.value)}/>
