@@ -53,7 +53,7 @@ const nonce = (month:string, diff:number) => {
 };
 const inProgressFilter = 'andamento';
 const planningStatuses = {
-  Pendente:{tone:'blue', option:'Situação pendente'},
+  Pendente:{tone:'planning-pending', option:'Situação pendente'},
   Parcial:{tone:'planning-partial', option:'Situação parcial'},
   Atrasado:{tone:'planning-overdue', option:'Situação atrasado'},
   Entregue:{tone:'planning-delivered', option:'Situação entregue'},
@@ -144,9 +144,9 @@ function RowActions({label,children}:{label:string;children:ReactNode}) {
 }
 function CatalogActions({operation,label,onOpen,children}:{operation:Operation;label:string;onOpen:(value:Operation)=>void;children?:ReactNode}) {
   return <RowActions label={'Ações de '+label}>
-    <button type="button" onClick={()=>onOpen(operation)}>Editar</button>
+    <button type="button" onClick={()=>onOpen(operation)}>Editar registro</button>
     {children}
-    <button type="button" className="danger" onClick={()=>onOpen({...operation,remove:true})}>Excluir</button>
+    <button type="button" className="danger" onClick={()=>onOpen({...operation,remove:true})}>Excluir registro</button>
   </RowActions>;
 }
 function FilterField({icon:Icon,children}:{icon:LucideIcon;children:ReactNode}) {
@@ -215,7 +215,7 @@ export default function Workspace() {
         : {type:'warning',title:'Acesso desativado',description:'O perfil perdeu o acesso ao portal.'});
     } else if (input.action==='clearHistory') {
       setToast({type:'success',title:'Histórico atualizado',description:'Os registros selecionados foram excluídos.'});
-    } else if (['deleteMaterial','deleteSupplier','deleteConversion','deleteHoliday','deleteEntry','deleteShipment','deleteReceipt'].includes(String(input.action))) {
+    } else if (['deleteMaterial','deleteSupplier','deleteConversion','deleteHoliday','deleteEntry','deleteShipment','deleteReceipt','deleteShipmentLogged','deleteReceiptLogged'].includes(String(input.action))) {
       setToast({type:'success',title:'Registro excluído',description:'O registro foi removido da listagem.'});
     } else if (input.action==='entryMonth') {
       setToast({type:'success',title:'Programação salva',description:'As quantidades informadas foram registradas no calendário.'});
@@ -226,7 +226,7 @@ export default function Workspace() {
     }
   }
 
-  function go(next:Tab) {setTab(next);setQuery('');setFilter('');setSupplierFilter('');setStatusFilter(inProgressFilter);setShowFilters(false);setMobile(false);}
+  function go(next:Tab) {setTab(next);setQuery('');setFilter('');setSupplierFilter('');setStatusFilter(next==='Programação'?inProgressFilter:'');setShowFilters(false);setMobile(false);}
   async function access(email:string,password?:string) {
     const response = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
     const result = await response.json();
@@ -345,8 +345,10 @@ export default function Workspace() {
   const matching = (e: {material:string;supplier:string}) => (!filter || filter===e.material) &&
     (!query || [materials.get(e.material)?.name || '',e.material,e.supplier].join(' ').toLocaleLowerCase('pt-BR').includes(query.trim().toLocaleLowerCase('pt-BR')));
   const planning = tab==='Programação';
+  const movement = tab==='Entregas' || tab==='Recebidos';
+  const matchingScope = (record:{supplier:string;material:string}) => matching(record) && (!supplierFilter || record.supplier===supplierFilter);
   const today = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',dateStyle:'short'}).format(new Date());
-  const ordered = (planning ? selectedMonth : entries).filter(entry=>matching(entry) && (!planning || !supplierFilter || entry.supplier===supplierFilter))
+  const ordered = (planning ? selectedMonth : entries).filter(planning ? matchingScope : matching)
     .map(entry=>({entry,actual:received(data,entry.id)}))
     .map(row=>({...row,label:status(row.entry,row.actual,today)}))
     .filter(({label})=>!planning || !statusFilter ||
@@ -360,11 +362,25 @@ export default function Workspace() {
   const profileInitials = operational ? 'RO' : profile.name.slice(0,2).toUpperCase();
   const primaryTitle = operational ? 'Nova programação':'Registrar entrega';
   const primary = ()=>setOperation({kind:operational?'entryMonth':'shipment'});
+  const deliveryRows = tab==='Entregas' ? shipments.filter(matchingScope).slice().reverse().map(shipment=>{
+    const links = data.receipts.filter(receipt=>receipt.shipment===shipment.id);
+    const difference = shipment.converted===undefined ? null : round(links.reduce((sum,receipt)=>sum+receipt.converted,0)-shipment.converted);
+    const situation = shipment.duplicateOf ? 'Entrega vinculada' : !links.length ? 'Sem recebimento' : difference===null ?
+      'Recebimento vinculado' : difference===0 ? 'Entrega conferida' : 'Entrega com divergência';
+    const detail = situation==='Entrega com divergência' && difference!==null
+      ? `${fmt(Math.abs(difference))} ${materials.get(shipment.material)?.unit ?? ''} a ${difference>0?'mais':'menos'}` : situation;
+    const tone = shipment.duplicateOf ? 'gray' : situation==='Entrega conferida' ? 'planning-delivered' :
+      situation==='Entrega com divergência' ? 'planning-partial' : 'blue';
+    return {shipment,situation,detail,tone};
+  }).filter(row=>!statusFilter || row.situation===statusFilter) : [];
+  const receiptRows = tab==='Recebidos' ? receipts.filter(matchingScope).slice().reverse()
+    .filter(receipt=>!statusFilter || (receipt.shipment ? 'Entrega vinculada' : 'Sem entrega vinculada')===statusFilter) : [];
+  const paginationKey = JSON.stringify([month,filter,supplierFilter,statusFilter]);
   function toolbar() {
     const materialSelect = <select aria-label="Filtrar material" value={filter} onChange={e=>setFilter(e.target.value)}>
       <option value="">Todos os materiais</option>{Array.from(materials.values(),m=><option key={m.id} value={m.id}>{m.name}</option>)}
     </select>;
-    if (planning) return <div className="tools">
+    if (planning || movement) return <div className="tools movement-filters">
       <FilterField icon={Package}>{materialSelect}</FilterField>
       <FilterField icon={Truck}><select aria-label="Filtrar fornecedor" value={supplierFilter} onChange={e=>setSupplierFilter(e.target.value)}>
         <option value="">Todos os fornecedores</option>
@@ -372,8 +388,12 @@ export default function Workspace() {
       </select></FilterField>
       <FilterField icon={ListFilter}><select aria-label="Filtrar situação" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
         <option value="">Todas situações</option>
-        <option value={inProgressFilter}>Situação andamento</option>
-        {Object.entries(planningStatuses).map(([label,{option}])=><option key={label} value={label}>{option}</option>)}
+        {planning ? <>
+          <option value={inProgressFilter}>Situação andamento</option>
+          {Object.entries(planningStatuses).map(([label,{option}])=><option key={label} value={label}>{option}</option>)}
+        </> : (tab==='Entregas'
+          ? ['Entrega vinculada','Sem recebimento','Recebimento vinculado','Entrega conferida','Entrega com divergência']
+          : ['Entrega vinculada','Sem entrega vinculada']).map(option=><option key={option}>{option}</option>)}
       </select></FilterField>
     </div>;
     return <div className="tools">
@@ -401,7 +421,7 @@ export default function Workspace() {
           </RowActions>}
         </tr>;
     };
-    if (planning) return <PaginatedTable key={JSON.stringify([month,filter,supplierFilter,statusFilter])}
+    if (planning) return <PaginatedTable key={paginationKey}
       label="programação do mês" columns={columns} items={ordered} newestFirst renderRow={renderRow}
       pageSize={planningPageSize} onPageSizeChange={setPlanningPageSize}/>;
     return <Table columns={columns} empty={!visibleEntries.length}>{visibleEntries.map(renderRow)}</Table>;
@@ -460,27 +480,35 @@ export default function Workspace() {
           {!planning&&<div className="panel-footer"><span>{visibleEntries.length} de {ordered.length} registros</span><button className="text-button" onClick={()=>go('Programação')}>Ver programação completa <ArrowRight size={15}/></button></div>}
         </section>}
         {tab==='Entregas'&& <section className="panel"><div className="panel-heading"><h2>Entregas registradas</h2>{toolbar()}</div>
-          <Table columns={['Data de entrega','Material','Fornecedor','Quantidade na NF','NF','Frete','Registrado por','Conferência',...(operational?['Ações']:[])]} empty={!shipments.filter(matching).length}>
-            {shipments.filter(matching).slice().reverse().map(s=>{
-              const links = data.receipts.filter(r=>r.shipment===s.id);
-              const actual = round(links.reduce((sum,r)=>sum+r.converted,0));
-              const difference = s.converted === undefined ? null : round(actual-s.converted);
-              const comparison = s.duplicateOf ? ['Vinculado','gray'] : !links.length ? ['Sem recebimento','blue'] :
-                difference === null ? ['Recebimento vinculado','blue'] : difference===0 ? ['Conferido','green'] :
-                [`${fmt(Math.abs(difference))} ${materials.get(s.material)?.unit} a ${difference>0?'mais':'menos'}`,'amber'];
-              return <tr key={s.id}><td>{dateLabel(deliveryDate(s))}</td><td><strong>{materials.get(s.material)?.name}</strong></td><td>{s.supplier}</td><td>{fmt(s.quantity)} {s.unit}</td><td>{s.nf||blank}</td><td>{s.freight||blank}</td><td>{s.author}</td><td><Badge label={comparison[0]} tone={comparison[1]}/></td>
-              {operational && <RowActions label="Ações da entrega">
-                <button type="button" disabled={!!s.duplicateOf} onClick={()=>setOperation({kind:'duplicate',id:s.id})}>Vincular</button>
-                {canDeletePermanently&&<button type="button" className="danger" onClick={()=>setOperation({kind:'deleteShipment',id:s.id})}>Excluir definitivamente</button>}
-              </RowActions>}</tr>;})}
-          </Table></section>}
+          <PaginatedTable key={paginationKey} label="entregas" pageSize={planningPageSize} onPageSizeChange={setPlanningPageSize}
+            columns={['Data de entrega','Material','Fornecedor','Quantidade na nota fiscal','Número da nota fiscal','Número do frete','Registrado por','Conferência',...(operational?['Ações']:[])]}
+            items={deliveryRows} newestFirst renderRow={({shipment:s,detail,tone})=>
+              <tr key={s.id}><td>{dateLabel(deliveryDate(s))}</td><td><strong>{materials.get(s.material)?.name}</strong></td><td>{s.supplier}</td>
+                <td>{fmt(s.quantity)} {s.unit}</td><td>{s.nf||blank}</td><td>{s.freight||blank}</td><td>{s.author}</td><td><Badge label={detail} tone={tone}/></td>
+                {operational && <RowActions label="Ações da entrega">
+                  <button type="button" disabled={!!s.duplicateOf} onClick={()=>setOperation({kind:'duplicate',id:s.id})}>Vincular entrega</button>
+                  {canDeletePermanently&&<>
+                    <button type="button" onClick={()=>setOperation({kind:'shipment',id:s.id})}>Editar entrega</button>
+                    <button type="button" className="danger" onClick={()=>setOperation({kind:'deleteShipmentLogged',id:s.id})}>Excluir com histórico</button>
+                    <button type="button" className="danger" onClick={()=>setOperation({kind:'deleteShipment',id:s.id})}>Excluir definitivamente</button>
+                  </>}
+                </RowActions>}
+              </tr>}/>
+        </section>}
         {tab==='Recebidos'&& <section className="panel"><div className="panel-heading"><h2>Materiais recebidos</h2>{toolbar()}</div>
-          <Table columns={['Recebido em','Material','Fornecedor','Quantidade','Convertida','NF','Frete','Ações']} empty={!receipts.filter(matching).length}>
-            {receipts.filter(matching).slice().reverse().map(r=><tr key={r.id}><td>{dateLabel(r.date)}</td><td><strong>{materials.get(r.material)?.name}</strong></td><td>{r.supplier}</td><td>{fmt(r.quantity)} {r.unit}</td><td>{fmt(r.converted)} {materials.get(r.material)?.unit}</td><td>{r.nf||'Sem NF'}</td><td>{r.freight||blank}</td><RowActions label="Ações do recebimento">
-              <button type="button" onClick={()=>setOperation({kind:'receiptDetails',id:r.id})}>Detalhes</button>
-              {canDeletePermanently&&<button type="button" className="danger" onClick={()=>setOperation({kind:'deleteReceipt',id:r.id})}>Excluir definitivamente</button>}
-            </RowActions></tr>)}
-          </Table></section>}
+          <PaginatedTable key={paginationKey} label="recebidos" pageSize={planningPageSize} onPageSizeChange={setPlanningPageSize}
+            columns={['Recebido em','Material','Fornecedor','Quantidade','Convertida','NF','Frete','Situação','Ações']}
+            items={receiptRows} newestFirst renderRow={r=><tr key={r.id}><td>{dateLabel(r.date)}</td><td><strong>{materials.get(r.material)?.name}</strong></td><td>{r.supplier}</td><td>{fmt(r.quantity)} {r.unit}</td><td>{fmt(r.converted)} {materials.get(r.material)?.unit}</td><td>{r.nf||'Sem NF'}</td><td>{r.freight||blank}</td>
+              <td><Badge label={r.shipment?'Entrega vinculada':'Sem entrega vinculada'} tone={r.shipment?'planning-delivered':'gray'}/></td>
+              <RowActions label="Ações do recebimento">
+                <button type="button" onClick={()=>setOperation({kind:'receiptDetails',id:r.id})}>Ver detalhes</button>
+                {canDeletePermanently&&<>
+                  <button type="button" onClick={()=>setOperation({kind:'receipt',id:r.id})}>Editar recebido</button>
+                  <button type="button" className="danger" onClick={()=>setOperation({kind:'deleteReceiptLogged',id:r.id})}>Excluir com histórico</button>
+                  <button type="button" className="danger" onClick={()=>setOperation({kind:'deleteReceipt',id:r.id})}>Excluir definitivamente</button>
+                </>}
+              </RowActions></tr>}/>
+        </section>}
         {tab==='PDF mensal'&&canViewTab(tab,state)&& <div className="stack">
           <section className="panel"><div className="panel-heading"><div><h2>Programação para os setores</h2><p>O PDF inclui as quantidades programadas do mês.</p></div><div className="tools">
             <a className="button" href={'/api/pdf?month='+month}><ArrowDownToLine size={16}/> Baixar PDF atual</a><button className="button primary" onClick={()=>setOperation({kind:'publish'})}><Plus size={16}/> Salvar versão</button>
@@ -564,7 +592,7 @@ export default function Workspace() {
               return <tr key={p.email}>
                 <td><div className="profile-name"><strong>{p.name}</strong>{!active&&<Badge label="Inativo" tone="gray"/>}</div></td><td>{p.email}</td><td>{roleLabel[p.role]}</td>
                 <RowActions label={`Ações de ${p.name}`}>
-                  <button type="button" onClick={()=>setOperation({kind:'profile',id:p.email})}>Editar</button>
+                  <button type="button" onClick={()=>setOperation({kind:'profile',id:p.email})}>Editar registro</button>
                   {!state.demo&&<button type="button" onClick={()=>setOperation({kind:'resetPassword',id:p.email})}>Redefinir senha</button>}
                   <button type="button" disabled={ownProfile} onClick={()=>setOperation({kind:'setProfileActive',id:p.email,active:!active})}>{accessAction}</button>
                   <button type="button" className="danger" disabled={ownProfile} onClick={()=>setOperation({kind:'revoke',id:p.email})}>Revogar acesso</button>

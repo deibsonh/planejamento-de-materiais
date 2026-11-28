@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { allowed, canManageProfiles, catalogUnit, getCalendar, getSupplierDetails, hasAdministrationAccess, hasOperationalAccess, hasPdfAccess, isHoliday, isProfileActive, listHolidays, MATERIAL_TYPES, normalizeProfileRole, dateLabel, received, round, type Data, type HistoryCategory, type Profile, type Scope, type Allocation, type Conversion, type SupplierDetails } from './model';
+import { allowed, canManageProfiles, catalogUnit, getCalendar, getSupplierDetails, hasAdministrationAccess, hasOperationalAccess, hasPdfAccess, isHoliday, isProfileActive, listHolidays, MATERIAL_TYPES, normalizeProfileRole, dateLabel, received, round, type Data, type Receipt, type HistoryCategory, type Profile, type Scope, type Allocation, type Conversion, type SupplierDetails } from './model';
 import { ForbiddenError, isBootstrapAdmin, UserError } from './server';
 type Input = Record<string, unknown>;
 const value = (input:Input,key:string) => typeof input[key] === 'string' ? String(input[key]).trim() : '';
@@ -73,9 +73,23 @@ const administrationActions = new Set([
   'material','deleteMaterial','supplier','deleteSupplier','conversion','deleteConversion',
   'holiday','setHolidayActive','deleteHoliday'
 ]);
+function removeShipment(data:Data,key:string) {
+  data.shipments = data.shipments.filter(shipment=>shipment.id!==key)
+    .map(shipment=>shipment.duplicateOf===key?{...shipment,duplicateOf:undefined}:shipment);
+  data.receipts = data.receipts.map(receipt=>receipt.shipment===key?{...receipt,shipment:''}:receipt);
+}
+function removeReceipt(data:Data,receipt:Receipt) {
+  data.receipts = data.receipts.filter(item=>item.id!==receipt.id);
+  const closingEntries = new Set(receipt.allocations.filter(allocation=>allocation.close).map(allocation=>allocation.entry));
+  for (const entry of data.entries) {
+    if (closingEntries.has(entry.id) && !data.receipts.some(item=>item.allocations.some(allocation=>allocation.entry===entry.id && allocation.close))) {
+      entry.closed = false;
+    }
+  }
+}
 const historyCategories:Partial<Record<string,HistoryCategory>> = {
   entry:'Programação',entryMonth:'Programação',cancel:'Programação',
-  shipment:'Entregas',duplicate:'Entregas',receipt:'Recebidos',
+  shipment:'Entregas',deleteShipmentLogged:'Entregas',duplicate:'Entregas',receipt:'Recebidos',deleteReceiptLogged:'Recebidos',
   material:'Cadastros',deleteMaterial:'Cadastros',supplier:'Cadastros',deleteSupplier:'Cadastros',
   conversion:'Cadastros',deleteConversion:'Cadastros',holiday:'Cadastros',setHolidayActive:'Cadastros',deleteHoliday:'Cadastros',
   profile:'Perfis de acesso',resetPassword:'Perfis de acesso',setProfileActive:'Perfis de acesso',revoke:'Perfis de acesso',
@@ -84,7 +98,9 @@ const historyCategories:Partial<Record<string,HistoryCategory>> = {
 export function apply(data:Data,profile:Profile,input:Input) {
   need(input && typeof input === 'object' && !Array.isArray(input),'Dados de registro inválidos.');
   const action = value(input,'action');
-  if (((profileActions.has(action) || permanentDeletionActions.has(action)) && !canManageProfiles(profile)) ||
+  const modifyingMovement = ['deleteShipmentLogged','deleteReceiptLogged'].includes(action) ||
+    (action==='shipment' && Boolean(value(input,'id'))) || (action==='receipt' && Boolean(value(input,'receiptId')));
+  if (((modifyingMovement || profileActions.has(action) || permanentDeletionActions.has(action)) && !canManageProfiles(profile)) ||
       (administrationActions.has(action) && !hasAdministrationAccess(profile)) ||
       ((action === 'calendar' || action === 'publish') && !hasPdfAccess(profile)) ||
       (action !== 'shipment' && !hasOperationalAccess(profile))) {
@@ -115,18 +131,11 @@ export function apply(data:Data,profile:Profile,input:Input) {
         data.publications = data.publications.map(publication=>({...publication,entries:publication.entries.filter(entry=>entry.id!==key)}));
         break;
       case 'deleteShipment':
-        data.shipments = data.shipments.filter(shipment=>shipment.id!==key)
-          .map(shipment=>shipment.duplicateOf===key?{...shipment,duplicateOf:undefined}:shipment);
-        data.receipts = data.receipts.map(receipt=>receipt.shipment===key?{...receipt,shipment:''}:receipt);
+        removeShipment(data,key);
         break;
       case 'deleteReceipt': {
-        const closingEntries = new Set(data.receipts.find(receipt=>receipt.id===key)?.allocations.filter(allocation=>allocation.close).map(allocation=>allocation.entry));
-        data.receipts = data.receipts.filter(receipt=>receipt.id!==key);
-        for (const entry of data.entries) {
-          if (closingEntries.has(entry.id) && !data.receipts.some(receipt=>receipt.allocations.some(allocation=>allocation.entry===entry.id && allocation.close))) {
-            entry.closed = false;
-          }
-        }
+        const receipt = data.receipts.find(item=>item.id===key);
+        if (receipt) removeReceipt(data,receipt);
         break;
       }
     }
@@ -187,18 +196,50 @@ export function apply(data:Data,profile:Profile,input:Input) {
       break;
     }
     case 'shipment': {
+      const key = value(input,'id');
+      const previous = data.shipments.find(record=>record.id===key);
+      need(!key || previous,'Entrega não encontrada.');
       const item = scope(data,input,profile);
-      const shipment = {...item,id,date:date(input,'date'),arrival:value(input,'arrival') ? date(input,'arrival') : '',
-        quantity:number(input,'quantity'),unit:required(input,'unit','a unidade'),nf:value(input,'nf'),freight:value(input,'freight'),author};
+      if (previous && !same(previous,item)) {
+        need(!previous.duplicateOf && !data.shipments.some(record=>record.duplicateOf===key) &&
+          !data.receipts.some(record=>record.shipment===key),'Mantenha fornecedor e material de uma entrega com vínculos.');
+      }
+      const notes = value(input,'notes');
+      need(notes.length<=1000,'Informe observações com até 1.000 caracteres.');
+      const enteredDate = date(input,'date');
+      const retainLegacyDates = previous?.arrival===enteredDate && !value(input,'arrival');
+      const shipment = {...previous,...item,id:previous?.id ?? id,
+        date:retainLegacyDates ? previous.date : enteredDate,
+        arrival:retainLegacyDates ? previous.arrival : value(input,'arrival') ? date(input,'arrival') : '',
+        quantity:number(input,'quantity'),unit:required(input,'unit','a unidade'),nf:value(input,'nf'),freight:value(input,'freight'),
+        notes,author:previous?.author ?? author};
       need(shipment.freight.length <= 180,'Informe um número de frete com até 180 caracteres.');
       const orderUnit = data.materials.find(m => m.id === item.material)!.unit;
       const conversion = shipment.unit === orderUnit ? undefined : data.conversions.find(c=>same(c,item) && c.unit===shipment.unit);
-      need(shipment.unit === orderUnit || conversion,'Unidade sem conversão cadastrada.');
-      const converted = round(!conversion ? shipment.quantity : conversion.operation==='divide' ? shipment.quantity/conversion.factor : shipment.quantity*conversion.factor);
-      need(Number.isFinite(converted) && converted > 0 && converted <= 1e10,'A quantidade convertida precisa ser válida.');
+      const sameMeasurement = previous && same(previous,item) && previous.unit===shipment.unit && previous.quantity===shipment.quantity;
+      need(sameMeasurement || shipment.unit === orderUnit || conversion,'Unidade sem conversão cadastrada.');
+      const converted = sameMeasurement ? previous.converted :
+        round(!conversion ? shipment.quantity : conversion.operation==='divide' ? shipment.quantity/conversion.factor : shipment.quantity*conversion.factor);
+      need(converted===undefined || (Number.isFinite(converted) && converted > 0 && converted <= 1e10),'A quantidade convertida precisa ser válida.');
       need(!shipment.arrival || shipment.arrival >= shipment.date,'A previsão de chegada deve ser igual ou posterior à expedição.');
-      data.shipments.push({...shipment,converted});
-      log = `Registrou entrega de ${shipment.quantity} ${shipment.unit} · ${item.supplier} · ${shipment.date}`;
+      const record = {...shipment,converted};
+      data.shipments = previous ? data.shipments.map(item=>item===previous?record:item) : [...data.shipments,record];
+      log = `${previous?'Editou':'Registrou'} entrega de ${shipment.quantity} ${shipment.unit} · ${item.supplier} · ${shipment.arrival || shipment.date}`;
+      break;
+    }
+    case 'deleteShipmentLogged': {
+      const key = value(input,'id');
+      const target = data.shipments.find(item=>item.id===key);
+      need(target,'Entrega não encontrada.');
+      removeShipment(data,key);
+      log = `Excluiu entrega de ${target.supplier} · ${target.material} · ${dateLabel(target.arrival || target.date)}`;
+      break;
+    }
+    case 'deleteReceiptLogged': {
+      const target = data.receipts.find(item=>item.id===value(input,'id'));
+      need(target,'Material recebido não encontrado.');
+      removeReceipt(data,target);
+      log = `Excluiu material recebido de ${target.supplier} · ${target.material} · ${dateLabel(target.date)}`;
       break;
     }
     case 'duplicate': {
@@ -211,26 +252,35 @@ export function apply(data:Data,profile:Profile,input:Input) {
       break;
     }
     case 'receipt': {
+      const key = value(input,'receiptId');
+      const previous = data.receipts.find(record=>record.id===key);
+      need(!key || previous,'Material recebido não encontrado.');
+      const existingIndex = previous ? data.receipts.indexOf(previous) : data.receipts.length;
       const item = scope(data,input,profile);
       const material = data.materials.find(m => m.id === item.material)!;
       const unit = required(input,'unit','a unidade');
-      const conversion = unit === material.unit ? undefined : data.conversions.find(c => same(c,item) && c.unit === unit);
-      need(unit === material.unit || conversion,'Cadastre a conversão para esta unidade antes de lançar a baixa.');
+      const retainedUnit = previous && same(previous,item) && previous.unit===unit;
+      const conversion = retainedUnit ? previous.operation==='identity' ? undefined : previous :
+        unit === material.unit ? undefined : data.conversions.find(c => same(c,item) && c.unit === unit);
+      need(retainedUnit || unit === material.unit || conversion,'Cadastre a conversão para esta unidade antes de lançar a baixa.');
       const quantity = number(input,'quantity');
       const converted = round(!conversion ? quantity : conversion.operation === 'divide' ? quantity / conversion.factor : quantity * conversion.factor);
       need(Number.isFinite(converted) && converted > 0 && converted <= 1e10,'A quantidade convertida precisa ser válida.');
       const shipment = value(input,'shipment');
       need(!shipment || data.shipments.some(s => s.id === shipment && same(s,item) && !s.duplicateOf),'Entrega inválida para esse recebimento.');
       need(Array.isArray(input.allocations) && input.allocations.length > 0,'Escolha pelo menos uma linha para baixar.');
+      if (previous) removeReceipt(data,previous);
       const seen = new Set<string>();
       const allocations:Allocation[] = input.allocations.map((allocation:Input) => {
         need(allocation && typeof allocation === 'object','Informe uma baixa válida.');
         const entry = data.entries.find(e => e.id === value(allocation,'entry'));
-        need(entry && same(entry,item) && !entry.canceled && !entry.closed && received(data,entry.id) < entry.quantity && !seen.has(entry.id),'Selecione linhas distintas com saldo pendente para este fornecedor e material.');
-        seen.add(entry.id);
         const amount = round(number(allocation,'quantity'));
         need(amount > 0,'Informe uma baixa de pelo menos 0,001.');
         const close = allocation.close === true;
+        const unchanged = previous?.allocations.some(row=>row.entry===entry?.id && row.quantity===amount && row.close===close);
+        need(entry && same(entry,item) && !seen.has(entry.id) && (unchanged || (!entry.canceled && !entry.closed && received(data,entry.id) < entry.quantity)),
+          'Selecione linhas distintas com saldo pendente para este fornecedor e material.');
+        seen.add(entry.id);
         if (close) entry.closed = true;
         return {entry:entry.id,quantity:amount,close};
       });
@@ -238,10 +288,10 @@ export function apply(data:Data,profile:Profile,input:Input) {
       need(allocated === converted,'Distribua toda a quantidade recebida entre as linhas selecionadas.');
       const invoicedQuantity = input.invoicedQuantity === undefined ? undefined : number(input,'invoicedQuantity');
       need(invoicedQuantity === undefined || value(input,'nf'),'Informe a nota fiscal para registrar a quantidade faturada.');
-      const receipt = {...item,id,date:date(input,'date'),quantity,invoicedQuantity,unit,converted,factor:conversion?.factor || 1,
-        operation:conversion?.operation || 'identity',nf:value(input,'nf'),freight:value(input,'freight'),shipment,allocations,author};
-      data.receipts.push(receipt);
-      log = `Registrou material recebido de ${converted} ${material.unit} · ${item.supplier} · ${receipt.date}`;
+      const receipt = {...item,id:previous?.id ?? id,date:date(input,'date'),quantity,invoicedQuantity,unit,converted,factor:conversion?.factor || 1,
+        operation:conversion?.operation || 'identity',nf:value(input,'nf'),freight:value(input,'freight'),shipment,allocations,author:previous?.author ?? author};
+      data.receipts.splice(existingIndex,0,receipt);
+      log = `${previous?'Editou':'Registrou'} material recebido de ${converted} ${material.unit} · ${item.supplier} · ${receipt.date}`;
       break;
     }
     case 'material': {

@@ -10,7 +10,7 @@ export type MaterialType = typeof MATERIAL_TYPES[number];
 export type Material = { id: string; name: string; unit: string; type?: MaterialType };
 export type SupplierDetails = { code: string; responsible: string; email: string; contact: string };
 export type Entry = Scope & { id: string; date: string; quantity: number; canceled?: boolean; closed?: boolean };
-export type Shipment = Scope & { id: string; date: string; arrival: string; quantity: number; unit: string; nf: string; freight?: string; author: string; converted?: number; duplicateOf?: string };
+export type Shipment = Scope & { id: string; date: string; arrival: string; quantity: number; unit: string; nf: string; freight?: string; notes?: string; author: string; converted?: number; duplicateOf?: string };
 export function deliveryDate(shipment:Shipment) {
   return shipment.arrival || shipment.date;
 }

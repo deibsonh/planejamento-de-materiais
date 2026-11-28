@@ -157,7 +157,8 @@ td.empty{text-align:center;color:var(--muted);padding:34px 12px}
 .filter-field{position:relative;display:inline-flex;max-width:100%;min-width:0}
 .filter-field>svg{position:absolute;inset-inline-start:9px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
 .tools .filter-field select,.history-filters .filter-field input[type=search]{max-width:100%;padding-inline-start:31px}
-.planning-table .filter-field select{max-width:230px}
+.movement-filters .filter-field{width:184px}
+.movement-filters .filter-field select{width:100%;text-overflow:ellipsis}
 .history-filters .button.danger{border-color:var(--danger-text)}
 .history-table td{line-height:1.45}
 .date-cell{font-variant-numeric:tabular-nums}
@@ -171,8 +172,9 @@ td.empty{text-align:center;color:var(--muted);padding:34px 12px}
 .badge.amber{background:var(--warning-surface);color:var(--warning-text)}.badge.gray{background:var(--neutral-surface);color:var(--neutral-text)}
 .badge.planning-partial{background:#fff2bf;color:#705300}
 .badge.planning-delivered{background:#dff3e6;color:#20603c}
-.badge.planning-overdue{background:#ffe5d1;color:#8c360c}
-.badge.planning-canceled{background:var(--danger-surface);color:var(--danger-text)}
+.badge.planning-pending{background:var(--info-surface);color:var(--info-text)}
+.badge.planning-canceled{background:#ffe5d1;color:#8c360c}
+.badge.planning-overdue{background:var(--danger-surface);color:var(--danger-text)}
 .row-actions{position:relative;text-align:right}
 .row-pop{position:fixed;inset:auto;margin:0;width:max-content;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto}
 .muted{color:var(--muted)}
@@ -222,6 +224,14 @@ td.empty{text-align:center;color:var(--muted);padding:34px 12px}
 .form-content input:not([type=checkbox]),.form-content select,.form-content textarea,.login input,.tools select{border:1px solid var(--control-border);border-radius:7px;padding:8px 9px;background:var(--paper);color:var(--ink);width:100%;min-height:36px;font-weight:500}
 input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
 .tools select{width:auto;font-size:12px}
+.form-content select,.tools select,.adjustable-pagination select{
+  appearance:none;padding-inline-end:33px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23464645' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 11px center;background-size:14px;
+}
+@media(forced-colors:active){
+  .form-content select,.tools select,.adjustable-pagination select{appearance:auto;background-image:none;padding-inline-end:9px}
+}
 .planning-dialog{width:min(880px,calc(100% - 26px))}
 .planning-calendar{min-inline-size:0;margin:0;padding:10px 11px 11px;border:1px solid var(--line);border-radius:9px;background:var(--surface-subtle)}
 .planning-calendar legend{padding:0 5px;font-weight:700}
