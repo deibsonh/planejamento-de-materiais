@@ -35,7 +35,7 @@ const blank = '—';
 const timeLabel = (iso:string) => new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'});
 const historyDayFormatter = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'});
 const normalizeSearch = (value:string) => value.trim().normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('pt-BR');
-const emptyHistoryFilters = {from:'',to:'',author:'',category:''};
+const emptyHistoryFilters = {date:'',author:'',category:''};
 const nonce = (month:string, diff:number) => {
   const [y,m] = month.split('-').map(Number);
   return new Date(Date.UTC(y,m-1+diff,1)).toISOString().slice(0,7);
@@ -93,33 +93,32 @@ function PaginatedTable<T>({label,columns,items,emptyLabel,renderRow,newestFirst
     </nav>
   </>;
 }
-function HistoryPeriodFilter({from,to,onChange}:{from:string;to:string;onChange:(from:string,to:string)=>void}) {
+function HistoryDateFilter({date,onChange}:{date:string;onChange:(date:string)=>void}) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [draft,setDraft] = useState({from,to});
-  const label = from && to ? `${dateLabel(from)} a ${dateLabel(to)}` : 'Selecione um período';
+  const [draft,setDraft] = useState(date);
+  const label = date ? dateLabel(date) : 'Selecione uma data';
   return <>
-    <button type="button" className="button history-period" aria-haspopup="dialog" onClick={()=>{
-      setDraft({from,to});
+    <button type="button" className="button history-date" aria-haspopup="dialog" onClick={()=>{
+      setDraft(date);
       dialog.current?.showModal();
     }}>{label}</button>
-    <dialog ref={dialog} className="dialog history-period-dialog" aria-labelledby="history-period-title">
+    <dialog ref={dialog} className="dialog history-date-dialog" aria-labelledby="history-date-title">
       <form className="dialog-content" onSubmit={event=>{
         event.preventDefault();
-        onChange(draft.from,draft.to);
+        onChange(draft);
         dialog.current?.close();
       }}>
-        <div className="dialog-head"><h2 id="history-period-title">Selecione um período</h2>
+        <div className="dialog-head"><h2 id="history-date-title">Selecione uma data</h2>
           <button type="button" className="icon-button" aria-label="Fechar" onClick={()=>dialog.current?.close()}><X size={18}/></button>
         </div>
-        <div className="form-content form-grid">
-          <label>De<input type="date" value={draft.from} required onChange={e=>setDraft({...draft,from:e.target.value})}/></label>
-          <label>Até<input type="date" value={draft.to} min={draft.from || undefined} required onChange={e=>setDraft({...draft,to:e.target.value})}/></label>
+        <div className="form-content">
+          <input type="date" aria-label="Data do histórico" value={draft} required onChange={e=>setDraft(e.target.value)}/>
         </div>
         <div className="dialog-footer">
-          {from && to && <button type="button" className="text-button history-clear-period" onClick={()=>{
-            onChange('','');
+          {date && <button type="button" className="text-button history-clear-date" onClick={()=>{
+            onChange('');
             dialog.current?.close();
-          }}>Remover período</button>}
+          }}>Remover data</button>}
           <button type="button" className="button" onClick={()=>dialog.current?.close()}>Cancelar</button>
           <button type="submit" className="button primary">Aplicar</button>
         </div>
@@ -390,14 +389,10 @@ export default function Workspace() {
   }
   const history = tab==='Histórico' ? data.history : [];
   const authorQuery = normalizeSearch(historyFilters.author);
-  const historyFiltered = Boolean(historyFilters.from || historyFilters.to || authorQuery || historyFilters.category);
   const filteredHistory = history.filter(record=>{
-    if (authorQuery && !normalizeSearch(record.author).includes(authorQuery) &&
-      !normalizeSearch(record.email ?? '').includes(authorQuery)) return false;
+    if (authorQuery && !normalizeSearch(record.author).includes(authorQuery)) return false;
     if (historyFilters.category && record.category!==historyFilters.category) return false;
-    if (!historyFilters.from && !historyFilters.to) return true;
-    const day = historyDayFormatter.format(new Date(record.date));
-    return (!historyFilters.from || day>=historyFilters.from) && (!historyFilters.to || day<=historyFilters.to);
+    return !historyFilters.date || historyDayFormatter.format(new Date(record.date))===historyFilters.date;
   });
   function setHistoryFilter(key:keyof typeof historyFilters,value:string) {
     setHistoryFilters(filters=>({...filters,[key]:value}));
@@ -578,8 +573,7 @@ export default function Workspace() {
             <div className="tools history-filters" role="group" aria-label="Filtros do histórico">
               <input type="search" aria-label="Responsável" placeholder="Buscar responsável" value={historyFilters.author}
                 onChange={e=>setHistoryFilter('author',e.target.value)}/>
-              <HistoryPeriodFilter from={historyFilters.from} to={historyFilters.to}
-                onChange={(from,to)=>setHistoryFilters(filters=>({...filters,from,to}))}/>
+              <HistoryDateFilter date={historyFilters.date} onChange={date=>setHistoryFilter('date',date)}/>
               <select aria-label="Tipo" value={historyFilters.category} onChange={e=>setHistoryFilter('category',e.target.value)}>
                 <option value="">Todos os tipos</option>
                 {HISTORY_CATEGORIES.map(category=><option key={category} value={category}>
@@ -588,7 +582,7 @@ export default function Workspace() {
               </select>
               {canDeletePermanently&&<button type="button" className="button danger" disabled={!filteredHistory.length}
                 onClick={()=>setOperation({kind:'clearHistory',historyIds:filteredHistory.map(record=>record.id)})}>
-                <Trash2 size={15} aria-hidden="true"/> {historyFiltered?'Limpar resultados':'Limpar histórico'}
+                <Trash2 size={15} aria-hidden="true"/> Limpar histórico
               </button>}
             </div>
           </div>
