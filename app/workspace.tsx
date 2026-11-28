@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowDownToLine, ArrowLeftRight, ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, CirclePause, CirclePlay, Clock3, Container, Ellipsis, FileText, Flame, FlaskConical, Fuel, Gem, Grid3x3, Grip, History, Hourglass, KeyRound, LayoutDashboard, LogOut, Menu, Mountain, Package, PackageCheck, Pencil, Plus, Search, Settings2, Shapes, SlidersHorizontal, SprayCan, Trash2, TreePine, Truck, Users, X, type LucideIcon } from 'lucide-react';
-import { dateLabel, getCalendar, fmt, getSupplierDetails, HISTORY_CATEGORIES, hasAdministrationAccess, hasOperationalAccess, hasPdfAccess, isProfileActive, listHolidays, monthLabel, received, round, currentMonth, workdays, type Data, type Entry, type MaterialType, type Profile } from '@/lib/model';
+import { dateLabel, getCalendar, fmt, getSupplierDetails, hasAdministrationAccess, hasOperationalAccess, hasPdfAccess, isProfileActive, listHolidays, monthLabel, received, round, currentMonth, workdays, type Data, type Entry, type MaterialType, type Profile } from '@/lib/model';
 import { demoMonth } from '@/lib/seed';
 import { OperationForm, roleLabel, type Operation } from './workspace-forms';
 
@@ -33,7 +33,7 @@ const panelDescriptions: Record<Tab,string> = {
 };
 const blank = '—';
 const timeLabel = (iso:string) => new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'});
-const historyDayFormatter = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'});
+const historyDayFormatter = new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short'});
 const normalizeSearch = (value:string) => value.trim().normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('pt-BR');
 const emptyHistoryFilters = {date:'',author:'',category:''};
 const nonce = (month:string, diff:number) => {
@@ -91,39 +91,6 @@ function PaginatedTable<T>({label,columns,items,emptyLabel,renderRow,newestFirst
       <span aria-live="polite">Página {page} de {pageCount}</span>
       <button type="button" className="button" disabled={page===pageCount} onClick={()=>setPage(page+1)}>Próxima</button>
     </nav>
-  </>;
-}
-function HistoryDateFilter({date,onChange}:{date:string;onChange:(date:string)=>void}) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const [draft,setDraft] = useState(date);
-  const label = date ? dateLabel(date) : 'Selecione uma data';
-  return <>
-    <button type="button" className="button history-date" aria-haspopup="dialog" onClick={()=>{
-      setDraft(date);
-      dialog.current?.showModal();
-    }}>{label}</button>
-    <dialog ref={dialog} className="dialog history-date-dialog" aria-labelledby="history-date-title">
-      <form className="dialog-content" onSubmit={event=>{
-        event.preventDefault();
-        onChange(draft);
-        dialog.current?.close();
-      }}>
-        <div className="dialog-head"><h2 id="history-date-title">Selecione uma data</h2>
-          <button type="button" className="icon-button" aria-label="Fechar" onClick={()=>dialog.current?.close()}><X size={18}/></button>
-        </div>
-        <div className="form-content">
-          <input type="date" aria-label="Data do histórico" value={draft} required onChange={e=>setDraft(e.target.value)}/>
-        </div>
-        <div className="dialog-footer">
-          {date && <button type="button" className="text-button history-clear-date" onClick={()=>{
-            onChange('');
-            dialog.current?.close();
-          }}>Remover data</button>}
-          <button type="button" className="button" onClick={()=>dialog.current?.close()}>Cancelar</button>
-          <button type="submit" className="button primary">Aplicar</button>
-        </div>
-      </form>
-    </dialog>
   </>;
 }
 function CatalogActions({operation,label,onOpen,children}:{operation:Operation;label:string;onOpen:(value:Operation)=>void;children?:ReactNode}) {
@@ -389,10 +356,12 @@ export default function Workspace() {
   }
   const history = tab==='Histórico' ? data.history : [];
   const authorQuery = normalizeSearch(historyFilters.author);
+  const categoryQuery = normalizeSearch(historyFilters.category);
+  const dateQuery = historyFilters.date.trim();
   const filteredHistory = history.filter(record=>{
     if (authorQuery && !normalizeSearch(record.author).includes(authorQuery)) return false;
-    if (historyFilters.category && record.category!==historyFilters.category) return false;
-    return !historyFilters.date || historyDayFormatter.format(new Date(record.date))===historyFilters.date;
+    if (categoryQuery && !normalizeSearch(record.category).includes(categoryQuery)) return false;
+    return !dateQuery || historyDayFormatter.format(new Date(record.date)).includes(dateQuery);
   });
   function setHistoryFilter(key:keyof typeof historyFilters,value:string) {
     setHistoryFilters(filters=>({...filters,[key]:value}));
@@ -573,13 +542,10 @@ export default function Workspace() {
             <div className="tools history-filters" role="group" aria-label="Filtros do histórico">
               <input type="search" aria-label="Responsável" placeholder="Buscar responsável" value={historyFilters.author}
                 onChange={e=>setHistoryFilter('author',e.target.value)}/>
-              <HistoryDateFilter date={historyFilters.date} onChange={date=>setHistoryFilter('date',date)}/>
-              <select aria-label="Tipo" value={historyFilters.category} onChange={e=>setHistoryFilter('category',e.target.value)}>
-                <option value="">Todos os tipos</option>
-                {HISTORY_CATEGORIES.map(category=><option key={category} value={category}>
-                  Tipo {category==='PDF mensal' ? category : category.toLocaleLowerCase('pt-BR')}
-                </option>)}
-              </select>
+              <input type="search" aria-label="Data" placeholder="Buscar data (dd/mm/aaaa)" value={historyFilters.date}
+                onChange={e=>setHistoryFilter('date',e.target.value)}/>
+              <input type="search" aria-label="Tipo" placeholder="Buscar tipo" value={historyFilters.category}
+                onChange={e=>setHistoryFilter('category',e.target.value)}/>
               {canDeletePermanently&&<button type="button" className="button danger" disabled={!filteredHistory.length}
                 onClick={()=>setOperation({kind:'clearHistory',historyIds:filteredHistory.map(record=>record.id)})}>
                 <Trash2 size={15} aria-hidden="true"/> Limpar histórico

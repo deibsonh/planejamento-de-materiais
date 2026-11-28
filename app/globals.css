@@ -156,10 +156,8 @@ td.empty{text-align:center;color:var(--muted);padding:34px 12px}
 .history-table th.actions-heading{width:65px}
 .history-table th.actions-heading,.history-table td:last-child:has(button){text-align:center}
 .history-filters{align-items:center}
-.history-filters select{max-width:min(275px,100%)}
-.history-filters input[type=search]{font:inherit;font-size:12px;width:290px;max-width:100%;min-height:36px;padding:7px 9px;border:1px solid var(--control-border);border-radius:7px;background:var(--paper);color:var(--ink)}
-.history-date-dialog{width:min(405px,calc(100% - 26px))}
-.history-clear-date{margin-inline-end:auto}
+.history-filters input[type=search]{font:inherit;font-size:12px;width:175px;max-width:100%;min-height:36px;padding:7px 9px;border:1px solid var(--control-border);border-radius:7px;background:var(--paper);color:var(--ink)}
+.history-filters input[type=search]:first-child{width:290px}
 .history-table td{line-height:1.45}
 .date-cell{font-variant-numeric:tabular-nums}
 .date-cell small{display:block;margin-top:3px;font-size:10px}
