@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { allowed, catalogUnit, defaultCalendar, getSupplierDetails, isHoliday, MATERIAL_TYPES, dateLabel, received, round, type Data, type Profile, type Scope, type Allocation, type Conversion, type SupplierDetails } from './model';
-import { demo, isConfiguredAdmin, UserError } from './server';
+import { allowed, canManageProfiles, catalogUnit, getCalendar, getSupplierDetails, hasAdministrationAccess, hasOperationalAccess, hasPdfAccess, isHoliday, isProfileActive, listHolidays, MATERIAL_TYPES, normalizeProfileRole, dateLabel, received, round, type Data, type Profile, type Scope, type Allocation, type Conversion, type SupplierDetails } from './model';
+import { ForbiddenError, isBootstrapAdmin, UserError } from './server';
 type Input = Record<string, unknown>;
 const value = (input:Input,key:string) => typeof input[key] === 'string' ? String(input[key]).trim() : '';
 function need(condition:unknown, message:string): asserts condition { if (!condition) throw new UserError(message); }
@@ -67,15 +67,25 @@ function describeConversion(conversion:Conversion) {
   const {material,supplier,unit,operation,factor} = conversion;
   return `${material} / ${supplier} · ${unit} ${operation==='divide' ? '÷' : '×'} ${factor}`;
 }
+export const profileActions = new Set(['profile','resetPassword','setProfileActive','revoke']);
+const administrationActions = new Set([
+  'material','deleteMaterial','supplier','deleteSupplier','conversion','deleteConversion',
+  'holiday','setHolidayActive','deleteHoliday'
+]);
 export function apply(data:Data,profile:Profile,input:Input) {
   need(input && typeof input === 'object' && !Array.isArray(input),'Dados de registro inválidos.');
   const action = value(input,'action');
+  if ((profileActions.has(action) && !canManageProfiles(profile)) ||
+      (administrationActions.has(action) && !hasAdministrationAccess(profile)) ||
+      ((action === 'calendar' || action === 'publish') && !hasPdfAccess(profile)) ||
+      (action !== 'shipment' && !hasOperationalAccess(profile))) {
+    throw new ForbiddenError('Seu perfil não pode realizar essa operação.');
+  }
   const requestId = value(input,'requestId');
-  if (requestId && data.history.some(h=>h.requestId===requestId && h.email===profile.email)) return;
+  if (requestId && data.history.some(h=>h.requestId===requestId && h.email===profile.email)) return false;
   const id = randomUUID();
   const author = profile.name;
   let log = '';
-  need(profile.role === 'internal' || action === 'shipment','Seu perfil não pode realizar essa operação.');
   switch (action) {
     case 'entry': {
       const item = scope(data,input,profile);
@@ -287,18 +297,20 @@ export function apply(data:Data,profile:Profile,input:Input) {
     }
     case 'profile': {
       const key = value(input,'id').toLowerCase();
-      const previous = key ? data.profiles.find(p=>p.email.toLowerCase()===key) : undefined;
+      const previous = key ? data.profiles.find(p=>p.email.trim().toLowerCase()===key) : undefined;
       need(!key || previous,'Perfil de acesso não encontrado.');
+      need(!isBootstrapAdmin(key),'O administrador padrão não pode ser alterado por aqui.');
       const email = required(input,'email','o e-mail').toLowerCase();
       need(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),'Informe um e-mail válido.');
-      need(!data.profiles.some(p=>p!==previous && p.email.toLowerCase()===email),'Já existe um perfil com esse e-mail.');
-      need(demo || email===key || !isConfiguredAdmin(email),'Este e-mail pertence a um administrador configurado no ambiente. Informe outro e-mail.');
-      const role = value(input,'role');
-      need(role === 'supplier' || role === 'carrier' || role === 'internal','Selecione um tipo de acesso.');
-      const scopes = role !== 'internal' && Array.isArray(input.scopes) ? input.scopes.map(item=>scope(data,item,profile)) : [];
-      need(role === 'internal' || scopes.length,'Selecione pelo menos uma combinação de fornecedor e material.');
+      need(!data.profiles.some(p=>p!==previous && p.email.trim().toLowerCase()===email),'Já existe um perfil com esse e-mail.');
+      need(!isBootstrapAdmin(email),'Este e-mail pertence ao administrador padrão. Informe outro e-mail.');
+      const role = normalizeProfileRole(value(input,'role'));
+      need(role,'Selecione um tipo de acesso.');
+      const operational = hasOperationalAccess({role});
+      const scopes = !operational && Array.isArray(input.scopes) ? input.scopes.map(item=>scope(data,item,profile)) : [];
+      need(operational || scopes.length,'Selecione pelo menos uma combinação de fornecedor e material.');
       const name = required(input,'name','o nome do perfil');
-      const updated:Profile = {email,name,role,scopes};
+      const updated:Profile = {...previous,email,name,role,scopes};
       if (previous) {
         data.profiles = data.profiles.map(p=>p===previous ? updated : p);
         log = key === email ? `Alterou acesso de ${email}` : `Alterou acesso de ${previous.email} para ${email}`;
@@ -310,23 +322,66 @@ export function apply(data:Data,profile:Profile,input:Input) {
     }
     case 'resetPassword': {
       const email = value(input,'id').toLowerCase();
-      need(!isConfiguredAdmin(email) && data.profiles.some(p=>p.email===email),'Perfil indisponível para redefinição.');
+      need(!isBootstrapAdmin(email) && data.profiles.some(p=>p.email===email),'Perfil indisponível para redefinição.');
       log = 'Redefiniu a senha de ' + email;
+      break;
+    }
+    case 'setProfileActive': {
+      const email = value(input,'id').toLowerCase();
+      const target = data.profiles.find(p=>p.email===email);
+      need(target && email!==profile.email && !isBootstrapAdmin(email),'Perfil indisponível para alterar a situação do acesso.');
+      const active = input.active;
+      need(typeof active === 'boolean','Informe a situação do acesso.');
+      if (isProfileActive(target) === active) return false;
+      target.active = active;
+      log = `${active ? 'Reativou' : 'Desativou'} o acesso de ${email}`;
       break;
     }
     case 'revoke': {
       const email = value(input,'email');
-      need(email !== profile.email && (demo || !isConfiguredAdmin(email)) && data.profiles.some(p=>p.email===email),'Perfil indisponível para revogação.');
+      need(email !== profile.email && !isBootstrapAdmin(email) && data.profiles.some(p=>p.email===email),'Perfil indisponível para revogação.');
       data.profiles = data.profiles.filter(p=>p.email!==email);
       log = 'Revogou acesso de ' + email;
+      break;
+    }
+    case 'holiday': {
+      const key = value(input,'id');
+      const holidays = listHolidays(data);
+      const previous = holidays.find(holiday=>holiday.date===key);
+      need(!key || previous,'Feriado não encontrado.');
+      const annual = input.annual === 'true';
+      const selectedDate = date(input,'date');
+      const day = annual ? selectedDate.slice(5) : selectedDate;
+      need(!holidays.some(holiday=>holiday!==previous && holiday.date===day),'Já existe um feriado cadastrado para esta data.');
+      const description = required(input,'description','o nome do feriado');
+      const holiday = {date:day,description,active:previous?.active ?? true,annual};
+      data.holidays = previous ? holidays.map(item=>item===previous?holiday:item) : [...holidays,holiday];
+      log = `${previous?'Alterou':'Cadastrou'} feriado de ${dateLabel(day)} · ${description} · ${annual?'Anual':'Data única'} · ${holiday.active?'Ativo':'Inativo'}`;
+      break;
+    }
+    case 'setHolidayActive': {
+      const holidays = listHolidays(data);
+      const holiday = holidays.find(item=>item.date===value(input,'id'));
+      need(holiday,'Feriado não encontrado.');
+      const active = input.active;
+      need(typeof active==='boolean','Informe se o feriado está ativo.');
+      if (holiday.active===active) return false;
+      data.holidays = holidays.map(item=>item===holiday ? {...item,active} : item);
+      log = `${active?'Reativou':'Desativou'} feriado de ${dateLabel(holiday.date)} · ${holiday.description}`;
+      break;
+    }
+    case 'deleteHoliday': {
+      const holidays = listHolidays(data);
+      const holiday = holidays.find(item=>item.date===value(input,'id'));
+      need(holiday,'Feriado não encontrado.');
+      data.holidays = holidays.filter(item=>item!==holiday);
+      log = `Excluiu feriado de ${dateLabel(holiday.date)} · ${holiday.description}`;
       break;
     }
     case 'calendar': {
       const selected = month(input);
       const shifts = number(input,'shifts');
       need(Number.isInteger(shifts) && shifts <= 24,'Informe um número inteiro de turnos entre 1 e 24.');
-      const holidays = [...new Set(value(input,'holidays').split(/[\s,;]+/).filter(Boolean).map(d=>date({d},'d')))].sort();
-      need(holidays.every(h=>h.startsWith(selected+'-')),'Informe apenas feriados do mês selecionado.');
       const count = (key:string,max:number) => {
         const raw = value(input,key);
         if (!raw) return undefined;
@@ -334,7 +389,7 @@ export function apply(data:Data,profile:Profile,input:Input) {
         need(Number.isInteger(n) && n>=0 && n<=max,'Informe uma quantidade válida de dias do mês.');
         return n;
       };
-      data.calendars[selected] = {holidays,shifts,weekdays:count('weekdays',23),saturdays:count('saturdays',5)};
+      data.calendars[selected] = {holidays:data.calendars[selected]?.holidays ?? [],shifts,weekdays:count('weekdays',23),saturdays:count('saturdays',5)};
       log = 'Atualizou calendário de ' + selected;
       break;
     }
@@ -342,11 +397,12 @@ export function apply(data:Data,profile:Profile,input:Input) {
       const selected = month(input);
       data.publications.push({id,month:selected,date:new Date().toISOString(),
         entries:data.entries.filter(e=>!e.canceled && e.date.startsWith(selected+'-')),
-        calendar:data.calendars[selected] || defaultCalendar,materials:data.materials});
+        calendar:getCalendar(data,selected),materials:data.materials});
       log = 'Publicou programação de ' + selected;
       break;
     }
     default: throw new UserError('Operação inválida.');
   }
   data.history.unshift({date:new Date().toISOString(),author,detail:log,requestId,email:profile.email});
+  return true;
 }

@@ -1,29 +1,36 @@
 'use client';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowDownToLine, ArrowLeftRight, ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, Clock3, Container, Ellipsis, FileText, Flame, FlaskConical, Fuel, Gem, Grid3x3, Grip, History, Hourglass, KeyRound, LayoutDashboard, LogOut, Menu, Mountain, Package, PackageCheck, Pencil, Plus, Search, Settings2, Shapes, SlidersHorizontal, SprayCan, Trash2, TreePine, Truck, Users, X, type LucideIcon } from 'lucide-react';
-import { dateLabel, defaultCalendar, fmt, getSupplierDetails, monthLabel, received, round, currentMonth, workdays, type Data, type Entry, type MaterialType, type Profile } from '@/lib/model';
+import { ArrowDownToLine, ArrowLeftRight, ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, CirclePause, CirclePlay, Clock3, Container, Ellipsis, FileText, Flame, FlaskConical, Fuel, Gem, Grid3x3, Grip, History, Hourglass, KeyRound, LayoutDashboard, LogOut, Menu, Mountain, Package, PackageCheck, Pencil, Plus, Search, Settings2, Shapes, SlidersHorizontal, SprayCan, Trash2, TreePine, Truck, Users, X, type LucideIcon } from 'lucide-react';
+import { dateLabel, getCalendar, fmt, getSupplierDetails, hasAdministrationAccess, hasOperationalAccess, hasPdfAccess, isProfileActive, listHolidays, monthLabel, received, round, currentMonth, workdays, type Data, type Entry, type MaterialType, type Profile } from '@/lib/model';
 import { demoMonth } from '@/lib/seed';
-import { OperationForm, type Operation } from './workspace-forms';
+import { OperationForm, roleLabel, type Operation } from './workspace-forms';
 
 type Tab = 'Visão geral'|'Programação'|'Envios'|'Recebimentos'|'PDF mensal'|'Cadastros'|'Perfis de acesso'|'Histórico';
 type State = {demo:boolean; profile:Profile|null; data:Data|null; mustChangePassword:boolean; canManageProfiles:boolean};
-const menu = [
+const planningMenu = [
   {label:'Visão geral',icon:LayoutDashboard},{label:'Programação',icon:CalendarDays},{label:'Envios',icon:Truck},
-  {label:'Recebimentos',icon:PackageCheck},{label:'PDF mensal',icon:FileText},
+  {label:'Recebimentos',icon:PackageCheck},{label:'PDF mensal',icon:FileText}
+] as const;
+const administrationMenu = [
   {label:'Cadastros',icon:Settings2},{label:'Perfis de acesso',icon:Users},{label:'Histórico',icon:History}
 ] as const;
-const roleLabel = {internal:'Equipe interna',supplier:'Fornecedor',carrier:'Transportadora'};
+function canViewTab(tab:Tab,{profile,canManageProfiles}:State) {
+  if (!profile) return false;
+  if (tab==='Perfis de acesso') return canManageProfiles;
+  if (tab==='Cadastros' || tab==='Histórico') return hasAdministrationAccess(profile);
+  if (tab==='PDF mensal') return hasPdfAccess(profile);
+  return true;
+}
 const panelDescriptions: Record<Tab,string> = {
   'Visão geral':'Acompanhe a programação e o andamento das entregas de materiais.',
   'Programação':'Planeje as entregas do mês e acompanhe o saldo de cada linha.',
   'Envios':'Acompanhe os materiais despachados por fornecedores e transportadoras.',
   'Recebimentos':'Consulte as entradas de materiais e as baixas realizadas na programação.',
   'PDF mensal':'Prepare a programação mensal para divulgação aos setores.',
-  'Cadastros':'Gerencie materiais, fornecedores e regras de conversão.',
-  'Perfis de acesso':'Controle os fornecedores e materiais disponíveis para cada parceiro.',
+  'Cadastros':'Gerencie materiais, fornecedores, regras de conversão e feriados.',
+  'Perfis de acesso':'Gerencie os tipos de acesso e as permissões dos perfis cadastrados.',
   'Histórico':'Consulte quem fez cada alteração no planejamento.'
 };
-const partnerTabs = ['Visão geral','Programação','Envios','Recebimentos'];
 const blank = '—';
 const timeLabel = (iso:string) => new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'});
 const nonce = (month:string, diff:number) => {
@@ -34,7 +41,7 @@ const inProgressFilter = 'andamento';
 const planningStatuses = {
   Pendente:{tone:'blue', option:'Situação pendente'},
   Parcial:{tone:'planning-partial', option:'Situação parcial'},
-  Encerrado:{tone:'planning-delivered', option:'Situação entregue'},
+  Entregue:{tone:'planning-delivered', option:'Situação entregue'},
   Cancelado:{tone:'planning-canceled', option:'Situação cancelado'}
 } as const;
 const weekdayFormatter = new Intl.DateTimeFormat('pt-BR',{weekday:'long',timeZone:'UTC'});
@@ -48,7 +55,7 @@ function MaterialIcon({type}:{type?:MaterialType}) {
 }
 function status(e:Entry, actual:number): keyof typeof planningStatuses {
   if (e.canceled) return 'Cancelado';
-  if (e.closed || actual >= e.quantity) return 'Encerrado';
+  if (e.closed || actual >= e.quantity) return 'Entregue';
   if (actual > 0) return 'Parcial';
   return 'Pendente';
 }
@@ -60,9 +67,33 @@ function Table({columns,children,empty,emptyLabel='Nenhum registro para os filtr
     {empty ? <tr><td colSpan={columns.length} className="empty">{emptyLabel}</td></tr> : children}
   </tbody></table></div>;
 }
-function CatalogActions({operation,label,onOpen}:{operation:Operation;label:string;onOpen:(value:Operation)=>void}) {
+function PaginatedTable<T>({label,columns,items,emptyLabel,renderRow,newestFirst=false}:{
+  label:string;columns:string[];items:T[];emptyLabel?:string;renderRow:(item:T,index:number)=>ReactNode;
+  newestFirst?:boolean;
+}) {
+  const pageSize = 10;
+  const pageCount = Math.max(1,Math.ceil(items.length/pageSize));
+  const [selectedPage,setPage] = useState(1);
+  const page = Math.min(selectedPage,pageCount);
+  if (page !== selectedPage) setPage(page);
+  const offset = (page-1)*pageSize;
+  const end = items.length-offset;
+  const pageItems = newestFirst ? items.slice(offset,offset+pageSize) : items.slice(Math.max(0,end-pageSize),end).reverse();
+  return <>
+    <Table columns={columns} empty={!items.length} emptyLabel={emptyLabel}>
+      {pageItems.map((item,index)=>renderRow(item,offset+index))}
+    </Table>
+    {pageCount>1&&<nav className="catalog-pagination" aria-label={`Paginação de ${label}`}>
+      <button type="button" className="button" disabled={page===1} onClick={()=>setPage(page-1)}>Anterior</button>
+      <span aria-live="polite">Página {page} de {pageCount}</span>
+      <button type="button" className="button" disabled={page===pageCount} onClick={()=>setPage(page+1)}>Próxima</button>
+    </nav>}
+  </>;
+}
+function CatalogActions({operation,label,onOpen,children}:{operation:Operation;label:string;onOpen:(value:Operation)=>void;children?:ReactNode}) {
   return <div className="catalog-actions">
     <button type="button" className="icon-button" title="Editar" aria-label={'Editar '+label} onClick={()=>onOpen(operation)}><Pencil size={15} aria-hidden="true"/></button>
+    {children}
     <button type="button" className="icon-button danger" title="Excluir" aria-label={'Excluir '+label} onClick={()=>onOpen({...operation,remove:true})}><Trash2 size={15} aria-hidden="true"/></button>
   </div>;
 }
@@ -134,8 +165,12 @@ export default function Workspace() {
     const result = await response.json();
     if (!response.ok) throw new Error(result.error);
     const refreshed = await reload();
-    if (!refreshed.profile || (state?.profile?.role==='internal' && refreshed.profile.role!=='internal')) go('Visão geral');
-    const deleted = ['deleteMaterial','deleteSupplier','deleteConversion'].some(action=>action===input.action);
+    if (!canViewTab(tab,refreshed)) go('Visão geral');
+    if (input.action==='setProfileActive') {
+      setToast(input.active ? 'Acesso reativado.' : 'Acesso desativado.');
+      return;
+    }
+    const deleted = ['deleteMaterial','deleteSupplier','deleteConversion','deleteHoliday'].some(action=>action===input.action);
     setToast(deleted?'Registro excluído com sucesso.':input.action==='entryMonth'?'Programação salva com sucesso.':'Alteração salva com sucesso.');
   }
 
@@ -156,7 +191,9 @@ export default function Workspace() {
     setAccessPending(true);
     setLoginResult('');
     try {
-      if (state?.mustChangePassword) {
+      if (state?.demo) {
+        await access('');
+      } else if (state?.mustChangePassword) {
         if (password!==form.get('confirmation')) throw new Error('As senhas não coincidem.');
         const response = await fetch('/api/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});
         if (!response.ok) throw new Error((await response.json()).error);
@@ -192,27 +229,27 @@ export default function Workspace() {
         <div className="login-brand">
           <span className="login-brand-mark"><CalendarDays size={28} aria-hidden="true"/></span>
           <p>Planejamento<br/> de Materiais</p>
-          <span className="login-brand-name">Romagnole</span>
+          <span className="login-brand-name">Gerenciamento de ponta a ponta</span>
         </div>
         <section className="login-card" aria-labelledby="login-title">
-          <h1 id="login-title">{changingPassword ? 'Defina sua nova senha' : 'Acesse sua conta'}</h1>
+          <h1 id="login-title">{state.demo ? 'Perfil indisponível' : changingPassword ? 'Defina sua nova senha' : 'Acesse sua conta'}</h1>
           <form key={changingPassword ? 'change' : 'login'} onSubmit={submitAccess}>
-            {changingPassword ? <>
+            {!state.demo && (changingPassword ? <>
               <p>Substitua a senha temporária para acessar o planejamento.</p>
-              <label>Nova senha<input type="password" name="password" autoComplete="new-password" minLength={12} maxLength={128} required/></label>
-              <label>Confirme a nova senha<input type="password" name="confirmation" autoComplete="new-password" minLength={12} maxLength={128} required/></label>
+              <label>Nova senha<input type="password" name="password" autoComplete="new-password" placeholder="Informe a nova senha" required/></label>
+              <label>Confirme a nova senha<input type="password" name="confirmation" autoComplete="new-password" placeholder="Repita a nova senha" required/></label>
             </> : <>
               <label>E-mail<input name="email" type="email" autoComplete="username" required placeholder="Seu e-mail de trabalho"/></label>
-              <label>Senha<input name="password" type="password" autoComplete="current-password" maxLength={128} required/></label>
-            </>}
+              <label>Senha<input name="password" type="password" autoComplete="current-password" required placeholder="Informe sua senha"/></label>
+            </>)}
             {loginResult && <p className="form-error" role="alert">{loginResult}</p>}
             <button className="button primary login-submit" type="submit" disabled={accessPending}>
-              {accessPending ? (changingPassword?'Salvando…':'Entrando…') : (changingPassword?'Salvar senha':'Entrar')}
+              {accessPending ? (changingPassword?'Salvando…':'Entrando…') : state.demo ? 'Voltar como administrador' : changingPassword ? 'Salvar senha' : 'Entrar'}
               <ArrowRight size={17} aria-hidden="true"/>
             </button>
-            {changingPassword
+            {!state.demo && (changingPassword
               ? <button className="button" type="button" disabled={accessPending} onClick={()=>void signOut()}>Sair</button>
-              : <button className="text-button login-recovery" type="button" onClick={()=>recoveryDialog.current?.showModal()}>Recuperar senha</button>}
+              : <button className="text-button login-recovery" type="button" onClick={()=>recoveryDialog.current?.showModal()}>Recuperar senha</button>)}
           </form>
         </section>
       </div> : <section className="login-loading" aria-labelledby="loading-title" role={failure?'alert':'status'}>
@@ -236,7 +273,9 @@ export default function Workspace() {
       {notification}
     </main>;
   }
-  const internal = profile.role === 'internal';
+  const operational = hasOperationalAccess(profile);
+  const visiblePlanningMenu = planningMenu.filter(({label})=>canViewTab(label,state));
+  const visibleAdministrationMenu = administrationMenu.filter(({label})=>canViewTab(label,state));
   const materials = new Map(data.materials.map(m=>[m.id,m]));
   const selectedMonth = data.entries.filter(e=>e.date.startsWith(month+'-'));
   const entries = selectedMonth.filter(e=>!e.canceled);
@@ -259,12 +298,13 @@ export default function Workspace() {
       (statusFilter===inProgressFilter ? label==='Pendente' || label==='Parcial' : label===statusFilter))
     .sort((a,b)=>a.entry.date.localeCompare(b.entry.date));
   const visibleEntries = tab==='Visão geral' ? ordered.slice(0,6) : ordered;
-  const calendar = data.calendars[month] || defaultCalendar;
+  const calendar = getCalendar(data,month);
+  const holidays = tab==='Cadastros' && canViewTab(tab,state) ? listHolidays(data) : [];
   const work = workdays(month,calendar);
   const monthVersions = data.publications.filter(p=>p.month===month).slice().reverse();
-  const profileInitials = profile.role==='internal' ? 'RO' : profile.name.slice(0,2).toUpperCase();
-  const primaryTitle = internal ? 'Nova programação':'Registrar envio';
-  const primary = ()=>setOperation({kind:internal?'entryMonth':'shipment'});
+  const profileInitials = operational ? 'RO' : profile.name.slice(0,2).toUpperCase();
+  const primaryTitle = operational ? 'Nova programação':'Registrar envio';
+  const primary = ()=>setOperation({kind:operational?'entryMonth':'shipment'});
   function toolbar() {
     const materialSelect = <select aria-label="Filtrar material" value={filter} onChange={e=>setFilter(e.target.value)}>
       <option value="">Todos os materiais</option>{Array.from(materials.values(),m=><option key={m.id} value={m.id}>{m.name}</option>)}
@@ -272,8 +312,8 @@ export default function Workspace() {
     if (planning) return <div className="tools">
       {materialSelect}
       <select aria-label="Filtrar situação" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
-        <option value={inProgressFilter}>Situação andamento</option>
         <option value="">Todas situações</option>
+        <option value={inProgressFilter}>Situação andamento</option>
         {Object.entries(planningStatuses).map(([label,{option}])=><option key={label} value={label}>{option}</option>)}
       </select>
     </div>;
@@ -284,19 +324,17 @@ export default function Workspace() {
     </div>;
   }
   function planningTable() {
-    return <Table columns={[planning?'Entrega':'Data prevista','Material','Fornecedor','Programado',...(planning?['Saldo','Recebido']:['Recebido','Saldo']),'Situação',...(internal?[planning?'Ações':'']:[])]} empty={!visibleEntries.length}>
+    return <Table columns={[planning?'Entrega':'Data prevista','Material','Fornecedor','Programado','Recebido',planning?'Pendente':'Saldo','Situação',...(operational?[planning?'Ações':'']:[])]} empty={!visibleEntries.length}>
       {visibleEntries.map(({entry:e,actual,label})=>{
         const material=materials.get(e.material);
         const balance = e.canceled || e.closed ? 0 : Math.max(0,round(e.quantity-actual));
         const quantityCell = (quantity:number) => <td><strong>{fmt(quantity)}</strong> <span className="muted">{material?.unit}</span></td>;
         return <tr key={e.id}><td className="date-cell"><time dateTime={e.date}>{dateLabel(e.date)}{planning&&<small>{weekdayFormatter.format(new Date(e.date))}</small>}</time></td><td><div className="material-cell"><MaterialIcon type={material?.type}/><div><strong>{material?.name || e.material}</strong><small>{e.material}</small></div></div></td>
           <td>{e.supplier}</td>{quantityCell(e.quantity)}
-          {planning ? <>{quantityCell(balance)}{quantityCell(actual)}</> : <>
-            {actual ? quantityCell(actual) : <td><span className="muted">{blank}</span></td>}
-            <td>{e.canceled || e.closed ? blank : fmt(balance)}</td>
-          </>}
+          {planning || actual ? quantityCell(actual) : <td><span className="muted">{blank}</span></td>}
+          {planning ? quantityCell(balance) : <td>{e.canceled || e.closed ? blank : fmt(balance)}</td>}
           <td><Badge label={label} tone={planningStatuses[label].tone}/></td>
-          {internal && <td className="row-actions"><button className="icon-button" aria-label="Ações da programação" onClick={event=>{
+          {operational && <td className="row-actions"><button className="icon-button" aria-label="Ações da programação" onClick={event=>{
             const rect = event.currentTarget.getBoundingClientRect();
             setMenuPosition({top:Math.min(rect.bottom,window.innerHeight-119),right:window.innerWidth-rect.right});
             setMenuId(menuId===e.id?'':e.id);
@@ -314,15 +352,15 @@ export default function Workspace() {
     {mobile && <button className="mobile-overlay" aria-label="Fechar navegação" onClick={()=>setMobile(false)}/>}
     <aside className={'sidebar '+(mobile?'mobile-open':'')}>
       <span className="app-title">Planejamento de Materiais</span>
-      <div className="nav"><p>PLANEJAMENTO</p>{menu.slice(0,5).filter(item=>internal||partnerTabs.includes(item.label)).map(({label,icon:Icon})=><button className={tab===label?'active':''} key={label} onClick={()=>go(label)}><Icon size={17}/>{label}</button>)}
-        {internal && <><p>ADMINISTRAÇÃO</p>{menu.slice(5).filter(item=>item.label!=='Perfis de acesso'||state.canManageProfiles).map(({label,icon:Icon})=><button className={tab===label?'active':''} key={label} onClick={()=>go(label)}><Icon size={17}/>{label}</button>)}</>}
+      <div className="nav"><p>PLANEJAMENTO</p>{visiblePlanningMenu.map(({label,icon:Icon})=><button className={tab===label?'active':''} key={label} onClick={()=>go(label)}><Icon size={17}/>{label}</button>)}
+        {visibleAdministrationMenu.length>0&&<><p>ADMINISTRAÇÃO</p>{visibleAdministrationMenu.map(({label,icon:Icon})=><button className={tab===label?'active':''} key={label} onClick={()=>go(label)}><Icon size={17}/>{label}</button>)}</>}
       </div>
       <div className="sidebar-bottom">
         <div className="account-wrap">
-          <button className="account" onClick={()=>setAccount(!account)}><span className="avatar">{profileInitials}</span><span><strong>{internal?'Romagnole':profile.name}</strong><small>{roleLabel[profile.role]}</small></span><ChevronsUpDown size={14}/></button>
+          <button className="account" onClick={()=>setAccount(!account)}><span className="avatar">{profileInitials}</span><span><strong>{profile.name}</strong><small>{roleLabel[profile.role]}</small></span><ChevronsUpDown size={14}/></button>
           {account && <div className="pop account-pop">
-            {state.demo ? <><span>Visualizar como</span><button onClick={()=>void access('').catch(e=>setToast(e.message))}>Romagnole</button>
-              {(internal?data.profiles.filter(p=>p.role!=='internal'):[]).map(p=><button key={p.email} onClick={()=>void access(p.email).catch(e=>setToast(e.message))}>{p.name} · {roleLabel[p.role]}</button>)}</>
+            {state.demo ? <><span>Visualizar como</span><button onClick={()=>void access('').catch(e=>setToast(e.message))}>{roleLabel.admin}</button>
+              {data.profiles.filter(isProfileActive).map(p=><button key={p.email} onClick={()=>void access(p.email).catch(e=>setToast(e.message))}>{p.name} · {roleLabel[p.role]}</button>)}</>
               : <button onClick={()=>void signOut()}><LogOut size={15}/> Sair</button>}
           </div>}
         </div>
@@ -335,12 +373,11 @@ export default function Workspace() {
       <main className="content">
         <div className="page-heading"><div><h1>{tab}</h1><p>{panelDescriptions[tab]}</p></div>
           <div className="heading-actions">
-            {!['Cadastros','Perfis de acesso','Histórico'].includes(tab) && <div className="month-control"><button aria-label="Mês anterior" onClick={()=>setMonth(nonce(month,-1))}><ChevronLeft size={15}/></button><label><CalendarDays size={16}/><span>{monthLabel(month)}</span><ChevronDown size={12}/><input type="month" aria-label="Selecionar mês" value={month} onChange={e=>{if(/^\d{4}-\d{2}$/.test(e.target.value))setMonth(e.target.value);}}/></label><button aria-label="Próximo mês" onClick={()=>setMonth(nonce(month,1))}><ChevronRight size={15}/></button></div>}
-            {planning && internal && <button className="button" onClick={()=>setOperation({kind:'calendar'})}><CalendarDays size={16}/> Feriados</button>}
-            {(tab==='Visão geral'||tab==='Programação'&&internal) && <button className="button primary" onClick={primary}><Plus size={17}/>{primaryTitle}</button>}
+            {visiblePlanningMenu.some(item=>item.label===tab) && <div className="month-control"><button aria-label="Mês anterior" onClick={()=>setMonth(nonce(month,-1))}><ChevronLeft size={15}/></button><label><CalendarDays size={16}/><span>{monthLabel(month)}</span><ChevronDown size={12}/><input type="month" aria-label="Selecionar mês" value={month} onChange={e=>{if(/^\d{4}-\d{2}$/.test(e.target.value))setMonth(e.target.value);}}/></label><button aria-label="Próximo mês" onClick={()=>setMonth(nonce(month,1))}><ChevronRight size={15}/></button></div>}
+            {(tab==='Visão geral'||tab==='Programação'&&operational) && <button className="button primary" onClick={primary}><Plus size={17}/>{primaryTitle}</button>}
             {tab==='Envios' && <button className="button primary" onClick={()=>setOperation({kind:'shipment'})}><Plus size={17}/> Registrar envio</button>}
-            {tab==='Recebimentos' && internal && <button className="button primary" onClick={()=>setOperation({kind:'receipt'})}><Plus size={17}/> Registrar recebimento</button>}
-            {tab==='Perfis de acesso' && state.canManageProfiles && <button className="button primary" onClick={()=>setOperation({kind:'profile'})}><Plus size={17}/> Novo perfil</button>}
+            {tab==='Recebimentos' && operational && <button className="button primary" onClick={()=>setOperation({kind:'receipt'})}><Plus size={17}/> Registrar recebimento</button>}
+            {tab==='Perfis de acesso' && canViewTab(tab,state) && <button className="button primary" onClick={()=>setOperation({kind:'profile'})}><Plus size={17}/> Novo perfil</button>}
           </div>
         </div>
         {tab==='Visão geral' && <>
@@ -353,7 +390,7 @@ export default function Workspace() {
           <div className="panel-footer"><span>{visibleEntries.length} de {ordered.length} registros</span>{tab==='Visão geral'&& <button className="text-button" onClick={()=>go('Programação')}>Ver programação completa <ArrowRight size={15}/></button>}</div>
         </section>}
         {tab==='Envios'&& <section className="panel"><div className="panel-heading"><h2>Registros de envio</h2>{toolbar()}</div>
-          <Table columns={['Expedição','Previsão','Material','Fornecedor','Quantidade','NF','Registrado por','Conferência',...(internal?['']:[])]} empty={!shipments.filter(matching).length}>
+          <Table columns={['Expedição','Previsão','Material','Fornecedor','Quantidade','NF','Registrado por','Conferência',...(operational?['']:[])]} empty={!shipments.filter(matching).length}>
             {shipments.filter(matching).slice().reverse().map(s=>{
               const links = data.receipts.filter(r=>r.shipment===s.id);
               const actual = round(links.reduce((sum,r)=>sum+r.converted,0));
@@ -362,77 +399,124 @@ export default function Workspace() {
                 difference === null ? ['Recebimento vinculado','blue'] : difference===0 ? ['Conferido','green'] :
                 [`${fmt(Math.abs(difference))} ${materials.get(s.material)?.unit} a ${difference>0?'mais':'menos'}`,'amber'];
               return <tr key={s.id}><td>{dateLabel(s.date)}</td><td>{s.arrival?dateLabel(s.arrival):blank}</td><td><strong>{materials.get(s.material)?.name}</strong></td><td>{s.supplier}</td><td>{fmt(s.quantity)} {s.unit}</td><td>{s.nf||blank}</td><td>{s.author}</td><td><Badge label={comparison[0]} tone={comparison[1]}/></td>
-              {internal && <td><button className="text-button" disabled={!!s.duplicateOf} onClick={()=>setOperation({kind:'duplicate',id:s.id})}><ArrowLeftRight size={15}/> Vincular</button></td>}</tr>;})}
+              {operational && <td><button className="text-button" disabled={!!s.duplicateOf} onClick={()=>setOperation({kind:'duplicate',id:s.id})}><ArrowLeftRight size={15}/> Vincular</button></td>}</tr>;})}
           </Table></section>}
         {tab==='Recebimentos'&& <section className="panel"><div className="panel-heading"><h2>Registros de recebimento</h2>{toolbar()}</div>
           <Table columns={['Recebido em','Material','Fornecedor','Quantidade','Convertida','NF','Frete','']} empty={!receipts.filter(matching).length}>
             {receipts.filter(matching).slice().reverse().map(r=><tr key={r.id}><td>{dateLabel(r.date)}</td><td><strong>{materials.get(r.material)?.name}</strong></td><td>{r.supplier}</td><td>{fmt(r.quantity)} {r.unit}</td><td>{fmt(r.converted)} {materials.get(r.material)?.unit}</td><td>{r.nf||'Sem NF'}</td><td>{r.freight||blank}</td><td><button className="text-button" onClick={()=>setOperation({kind:'receiptDetails',id:r.id})}>Detalhes <ChevronRight size={14}/></button></td></tr>)}
           </Table></section>}
-        {tab==='PDF mensal'&& internal && <div className="stack">
+        {tab==='PDF mensal'&&canViewTab(tab,state)&& <div className="stack">
           <section className="panel"><div className="panel-heading"><div><h2>Programação para os setores</h2><p>O PDF inclui as quantidades programadas do mês.</p></div><div className="tools">
             <a className="button" href={'/api/pdf?month='+month}><ArrowDownToLine size={16}/> Baixar PDF atual</a><button className="button primary" onClick={()=>setOperation({kind:'publish'})}><Plus size={16}/> Salvar versão</button>
           </div></div><div className="panel-body calendar-info"><div><span>Dias úteis equivalentes</span><strong>{fmt(work.total,2)}</strong></div><div><span>Turnos</span><strong>{calendar.shifts}</strong></div><div><span>Feriados</span><strong>{calendar.holidays.length ? calendar.holidays.map(dateLabel).join(', ') : 'Nenhum cadastrado'}</strong></div><button className="button" onClick={()=>setOperation({kind:'calendar'})}><CalendarDays size={16}/> Editar calendário</button></div></section>
           <section className="panel"><div className="panel-heading"><h2>Versões para divulgação</h2></div><Table columns={['Versão','Salva em','Linhas da programação','']} empty={!monthVersions.length}>{monthVersions.map((p,i)=><tr key={p.id}><td><strong>V{monthVersions.length-i}</strong></td><td>{timeLabel(p.date)}</td><td>{p.entries.length}</td><td><a className="text-button" href={`/api/pdf?month=${month}&version=${p.id}`}><ArrowDownToLine size={16}/> Baixar PDF</a></td></tr>)}</Table></section>
         </div>}
-        {tab==='Cadastros'&&internal&& <div className="stack catalog">
+        {tab==='Cadastros'&&canViewTab(tab,state)&& <div className="stack catalog">
           <section className="panel catalog-table">
             <div className="panel-heading">
               <h2>Materiais</h2>
-              <button type="button" className="button catalog-create" onClick={()=>setOperation({kind:'material'})}>
+              <button type="button" className="button" onClick={()=>setOperation({kind:'material'})}>
                 <Plus size={16} aria-hidden="true"/> Novo material
               </button>
             </div>
-            <Table columns={['Código','Material','Tipo','Unidade','Ações']} empty={!data.materials.length}>
-              {data.materials.map(m=><tr key={m.id}>
-                <td>{m.id}</td><td><strong>{m.name}</strong></td><td><span className="material-cell"><MaterialIcon type={m.type}/>{m.type ?? 'Sem tipo definido'}</span></td><td>{m.unit}</td>
+            <PaginatedTable label="materiais" columns={['Código','Material','Tipo','Unidade','Ações']} items={data.materials}
+              renderRow={m=><tr key={m.id}>
+                <td>{m.id}</td><td><strong>{m.name}</strong></td><td><span className="material-cell"><MaterialIcon type={m.type}/><span>{m.type ?? 'Sem tipo definido'}</span></span></td><td>{m.unit}</td>
                 <td><CatalogActions operation={{kind:'material',id:m.id}} label={`material ${m.name} (${m.id})`} onOpen={setOperation}/></td>
-              </tr>)}
-            </Table>
+              </tr>}/>
           </section>
           <section className="panel catalog-table">
             <div className="panel-heading">
               <h2>Fornecedores</h2>
-              <button type="button" className="button catalog-create" onClick={()=>setOperation({kind:'supplier'})}>
+              <button type="button" className="button" onClick={()=>setOperation({kind:'supplier'})}>
                 <Plus size={16} aria-hidden="true"/> Novo fornecedor
               </button>
             </div>
-            <Table columns={['Código','Nome do fornecedor','Nome do responsável','E-mail','Contato','Ações']} empty={!data.suppliers.length} emptyLabel="Nenhum fornecedor cadastrado.">
-              {data.suppliers.map(name=>{
+            <PaginatedTable label="fornecedores" columns={['Código','Nome do fornecedor','Nome do responsável','E-mail','Contato','Ações']} items={data.suppliers} emptyLabel="Nenhum fornecedor cadastrado."
+              renderRow={name=>{
                 const details = getSupplierDetails(data,name);
                 return <tr key={name}>
                   <td>{details?.code || blank}</td><td><strong>{name}</strong></td><td>{details?.responsible || blank}</td>
                   <td>{details?.email || blank}</td><td>{details?.contact || blank}</td>
                   <td><CatalogActions operation={{kind:'supplier',id:name}} label={`fornecedor ${name}`} onOpen={setOperation}/></td>
                 </tr>;
-              })}
-            </Table>
+              }}/>
           </section>
           <section className="panel catalog-table">
             <div className="panel-heading">
               <h2>Conversões</h2>
-              <button type="button" className="button catalog-create" onClick={()=>setOperation({kind:'conversion'})}>
+              <button type="button" className="button" onClick={()=>setOperation({kind:'conversion'})}>
                 <Plus size={16} aria-hidden="true"/> Cadastrar conversão
               </button>
             </div>
-            <Table columns={['Fornecedor','Material','Unidade de origem','Operação','Fator','Ações']} empty={!data.conversions.length}>
-              {data.conversions.map(({supplier,material,unit,operation,factor})=>{
+            <PaginatedTable label="conversões" columns={['Fornecedor','Material','Unidade de origem','Operação','Fator','Ações']} items={data.conversions}
+              renderRow={({supplier,material,unit,operation,factor})=>{
                 const materialName = materials.get(material)?.name || material;
                 return <tr key={JSON.stringify([supplier,material])}>
                   <td>{supplier}</td><td>{materialName}</td><td>{unit}</td><td>{operation==='divide'?'Divisão':'Multiplicação'}</td><td>{fmt(factor,8)}</td>
                   <td><CatalogActions operation={{kind:'conversion',scope:{supplier,material}}} label={`conversão de ${supplier} para ${materialName} (${material})`} onOpen={setOperation}/></td>
                 </tr>;
-              })}
-            </Table>
+              }}/>
+          </section>
+          <section className="panel catalog-table holiday-table">
+            <div className="panel-heading">
+              <h2>Feriados</h2>
+              <button type="button" className="button" onClick={()=>setOperation({kind:'holiday'})}>
+                <Plus size={16} aria-hidden="true"/> Novo feriado
+              </button>
+            </div>
+            <PaginatedTable label="feriados" columns={['Data','Nome do feriado','Recorrência','Ações']} items={holidays} emptyLabel="Nenhum feriado cadastrado."
+              renderRow={holiday=>{
+                const action = holiday.active ? 'Desativar feriado' : 'Reativar feriado';
+                const ActionIcon = holiday.active ? CirclePause : CirclePlay;
+                return <tr key={holiday.date}>
+                  <td><time dateTime={holiday.date}>{dateLabel(holiday.date)}</time></td>
+                  <td><strong>{holiday.description}</strong></td>
+                  <td>{holiday.annual?'Todos os anos':'Data única'}</td>
+                  <td><CatalogActions operation={{kind:'holiday',id:holiday.date}} label={`feriado de ${dateLabel(holiday.date)}`} onOpen={setOperation}>
+                    <button type="button" className="icon-button" title={action} aria-label={`${action}: ${holiday.description}, ${dateLabel(holiday.date)}`} onClick={()=>setOperation({kind:'setHolidayActive',id:holiday.date,active:!holiday.active})}><ActionIcon size={15} aria-hidden="true"/></button>
+                  </CatalogActions></td>
+                </tr>;
+              }}/>
           </section>
         </div>}
-        {tab==='Perfis de acesso'&&state.canManageProfiles&& <section className="panel"><div className="panel-heading"><div><h2>Perfis cadastrados</h2><p>Compartilhe o endereço do portal e entregue a senha temporária diretamente à pessoa cadastrada.</p></div><button className="button" onClick={async()=>{try{await navigator.clipboard.writeText(window.location.origin);setToast('Endereço de acesso copiado.');}catch{setToast('Copie o endereço do site na barra do navegador.');}}}>Copiar endereço de acesso</button></div>
-          <Table columns={['Perfil','E-mail','Tipo','Permissões','']} empty={!data.profiles.length}>{data.profiles.map(p=><tr key={p.email}>
-            <td><strong>{p.name}</strong></td><td>{p.email}</td><td>{roleLabel[p.role]}{!state.demo&&profile.email===p.email&&<small className="profile-role-note">Administrador configurado no ambiente</small>}</td>
-            <td>{p.role==='internal'?'Acesso interno':p.scopes.map(s=>s.supplier+' / '+(materials.get(s.material)?.name || s.material)).join(' · ')}</td>
-            <td><div className="table-buttons"><button className="text-button" onClick={()=>setOperation({kind:'profile',id:p.email})}>Editar</button>{!state.demo&&profile.email!==p.email&&<button className="text-button" onClick={()=>setOperation({kind:'resetPassword',id:p.email})}>Redefinir senha</button>}<button className="text-button danger" disabled={profile.email===p.email} onClick={()=>setOperation({kind:'revoke',id:p.email})}>Revogar</button></div></td>
-          </tr>)}</Table>
+        {tab==='Perfis de acesso'&&canViewTab(tab,state)&& <>
+          <section className="panel catalog-table"><div className="panel-heading"><div><h2>Perfis cadastrados</h2><p>Compartilhe o endereço do portal e entregue a senha temporária diretamente à pessoa cadastrada.</p></div></div>
+            <PaginatedTable label="perfis de acesso" columns={['Perfil','E-mail','Tipo','Ações']} items={data.profiles} renderRow={p=>{
+              const active = isProfileActive(p);
+              const ownProfile = profile.email===p.email;
+              const accessAction = active ? 'Desativar acesso' : 'Reativar acesso';
+              const AccessIcon = active ? CirclePause : CirclePlay;
+              return <tr key={p.email}>
+                <td><div className="profile-name"><strong>{p.name}</strong>{!active&&<Badge label="Inativo" tone="gray"/>}</div></td><td>{p.email}</td><td>{roleLabel[p.role]}</td>
+                <td><div className="catalog-actions">
+                  <button type="button" className="icon-button" title="Editar" aria-label={`Editar perfil de ${p.name}`} onClick={()=>setOperation({kind:'profile',id:p.email})}><Pencil size={15} aria-hidden="true"/></button>
+                  {!state.demo&&<button type="button" className="icon-button" title="Redefinir senha" aria-label={`Redefinir senha de ${p.name}`} onClick={()=>setOperation({kind:'resetPassword',id:p.email})}><KeyRound size={15} aria-hidden="true"/></button>}
+                  <button type="button" className="icon-button" title={accessAction} aria-label={`${accessAction} de ${p.name}`} disabled={ownProfile} onClick={()=>setOperation({kind:'setProfileActive',id:p.email,active:!active})}><AccessIcon size={15} aria-hidden="true"/></button>
+                  <button type="button" className="icon-button danger" title="Revogar acesso" aria-label={`Revogar acesso de ${p.name}`} disabled={ownProfile} onClick={()=>setOperation({kind:'revoke',id:p.email})}><Trash2 size={15} aria-hidden="true"/></button>
+                </div></td>
+              </tr>;
+            }}/>
+          </section>
+          <section className="panel profile-levels" aria-labelledby="profile-levels-title">
+            <div className="panel-heading"><div>
+              <h2 id="profile-levels-title">Níveis de acesso</h2>
+              <p>Consulte os recursos disponíveis em cada nível.</p>
+            </div></div>
+            <ul className="panel-body" role="list">
+              <li>{roleLabel.partner} - Recursos restante</li>
+              <li>{roleLabel.operator} - Menos PDF mensal</li>
+              <li>{roleLabel.internal} - Menos administração</li>
+              <li>{roleLabel.manager} - Menos perfis de acesso</li>
+              <li>{roleLabel.admin} - Todos os recursos</li>
+            </ul>
+          </section>
+        </>}
+        {tab==='Histórico'&&canViewTab(tab,state)&& <section className="panel">
+          <div className="panel-heading"><h2>Alterações registradas</h2></div>
+          <PaginatedTable label="histórico" columns={['Data e hora','Responsável','Alteração']} items={data.history} newestFirst
+            renderRow={(h,i)=><tr key={h.requestId ? JSON.stringify([h.email,h.requestId]) : h.date+i}><td>{timeLabel(h.date)}</td><td><strong>{h.author}</strong></td><td>{h.detail}</td></tr>}/>
         </section>}
-        {tab==='Histórico'&&internal&& <section className="panel"><div className="panel-heading"><h2>Alterações registradas</h2></div><Table columns={['Data e hora','Responsável','Alteração']} empty={!data.history.length}>{data.history.map((h,i)=><tr key={h.date+i}><td>{timeLabel(h.date)}</td><td><strong>{h.author}</strong></td><td>{h.detail}</td></tr>)}</Table></section>}
       </main>
     </div>
     {notification}

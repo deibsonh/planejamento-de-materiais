@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
-import { demoProfile, type Data, type Profile } from './model';
+import { demoProfile, isProfileActive, normalizeProfileRole, type Data, type Profile } from './model';
 import { initialData } from './seed';
 import { adminEmail, readSession, type Credentials } from './passwords';
 
@@ -11,42 +11,58 @@ export function sameOrigin(request:Request) {
   const origin = request.headers.get('origin');
   if (!origin) return false;
   try {
-    if (process.env.SITE_URL && !demo) return new URL(origin).origin === new URL(process.env.SITE_URL).origin;
     const url = new URL(origin);
-    return (url.protocol === 'http:' || url.protocol === 'https:') && url.host === request.headers.get('host');
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    if (process.env.SITE_URL && !demo) {
+      if (url.origin === new URL(process.env.SITE_URL).origin) return true;
+      if (process.env.VERCEL === '1' || !['localhost','127.0.0.1','[::1]'].includes(url.hostname)) return false;
+    }
+    return url.host === request.headers.get('host');
   } catch { return false; }
 }
 export function isConfiguredAdmin(email:string) {
-  return Boolean(email) && email === adminEmail();
+  const normalized = email.trim().toLowerCase();
+  return Boolean(normalized) && normalized === adminEmail();
+}
+export function isBootstrapAdmin(email:string) {
+  return demo ? email.trim().toLowerCase() === demoProfile.email : isConfiguredAdmin(email);
 }
 export class UserError extends Error {}
+export class ForbiddenError extends UserError {}
 
 export async function identify(data:Data,credentials:Credentials,allowTemporary=false):Promise<Profile|null> {
   if (demo) {
-    const selected = (await cookies()).get('romagnole-demo-profile')?.value;
-    return data.profiles.find(p => p.email === selected) || demoProfile;
+    const selected = (await cookies()).get('planning-demo-profile')?.value;
+    if (!selected || isBootstrapAdmin(selected)) return demoProfile;
+    const profile = data.profiles.find(p=>p.email===selected);
+    if (!profile) return demoProfile;
+    return isProfileActive(profile) ? profile : null;
   }
   const email = await readSession(credentials);
   if (!email) return null;
-  if (isConfiguredAdmin(email)) return {email,name:'Administrador',role:'internal',scopes:[]};
+  if (isConfiguredAdmin(email)) return {email,name:'Administrador',role:'admin',scopes:[]};
   if (credentials[email]?.temporary && !allowTemporary) return null;
-  return data.profiles.find(p=>p.email===email) || null;
+  return data.profiles.find(p=>p.email===email && isProfileActive(p)) || null;
 }
 function db() {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SECRET_KEYS) throw new Error('Configure o Supabase para executar o site.');
   return createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SECRET_KEYS,{auth:{persistSession:false,autoRefreshToken:false}});
 }
-const demoFile = '.data/romagnole.json';
-async function local() {
-  try { return JSON.parse(await readFile(demoFile,'utf8')) as Data; }
+const demoFile = '.data/planejamento.json';
+type StoredData = Omit<Data,'profiles'> & {profiles:(Omit<Profile,'role'> & {role:string})[]};
+function normalizeWorkspace(data:StoredData):Data {
+  return {...data,profiles:data.profiles.map(p=>({...p,role:normalizeProfileRole(p.role) ?? 'partner'}))};
+}
+async function local():Promise<StoredData> {
+  try { return JSON.parse(await readFile(demoFile,'utf8')) as StoredData; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; return initialData(true); }
 }
 export async function load() {
-  if (demo) return {data:await local(),credentials:{} as Credentials,version:0};
+  if (demo) return {data:normalizeWorkspace(await local()),credentials:{} as Credentials,version:0};
   const {data,error} = await db().from('planning_workspace').select('payload,version').eq('id',1).single();
   if (error) throw error;
-  const {credentials={},...workspace} = (data.payload || initialData(false)) as Data & {credentials?:Credentials};
-  return {data:workspace,credentials,version:data.version as number};
+  const {credentials={},...workspace} = (data.payload || initialData(false)) as StoredData & {credentials?:Credentials};
+  return {data:normalizeWorkspace(workspace),credentials,version:data.version as number};
 }
 export async function countLoginAttempt(email:string) {
   const {data,error} = await db().rpc('planning_allow_login',{account:email});

@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { cookies } from 'next/headers';
 
 const derive = promisify(scrypt);
-const cookieName = 'romagnole-session';
+const cookieName = 'planning-session';
 const sessionSeconds = 8 * 60 * 60;
 
 export type Credential = {hash:string; version:string; temporary:boolean};
@@ -13,8 +13,8 @@ export function adminEmail() {
   return (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
 }
 
-export function validPassword(value:unknown): value is string {
-  return typeof value === 'string' && value.length >= 12 && value.length <= 128;
+export function hasPassword(value:unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
 }
 
 export async function makeCredential(password:string, temporary:boolean):Promise<Credential> {
@@ -37,7 +37,7 @@ export async function verifyPassword(password:string, hash:string) {
 
 export function verifyAdmin(password:string) {
   const configured = process.env.ADMIN_PASSWORD;
-  return validPassword(configured) && equal(sign(password),sign(configured));
+  return hasPassword(configured) && equal(sign(password),sign(configured));
 }
 
 function sign(value:string) {
@@ -51,7 +51,7 @@ function signature(payload:string,version:string) {
 }
 
 export function sessionVersion(email:string, credentials:Credentials) {
-  if (email === adminEmail()) return validPassword(process.env.ADMIN_PASSWORD) ? process.env.ADMIN_PASSWORD : undefined;
+  if (email === adminEmail()) return hasPassword(process.env.ADMIN_PASSWORD) ? process.env.ADMIN_PASSWORD : undefined;
   return Object.hasOwn(credentials,email) ? credentials[email].version : undefined;
 }
 
@@ -68,10 +68,10 @@ export async function readSession(credentials:Credentials) {
   return version && equal(mac,signature(payload,version)) ? session.email : null;
 }
 
-export async function issueSession(email:string,version:string) {
+export async function issueSession(email:string,version:string,request:Request) {
   const payload = Buffer.from(JSON.stringify({email,expires:Date.now()+sessionSeconds*1000})).toString('base64url');
   (await cookies()).set(cookieName,payload+'.'+signature(payload,version),{
-    httpOnly:true,sameSite:'lax',secure:process.env.VERCEL==='1' || process.env.SITE_URL?.startsWith('https://'),
+    httpOnly:true,sameSite:'lax',secure:process.env.VERCEL==='1' || request.headers.get('origin')?.startsWith('https://'),
     path:'/',maxAge:sessionSeconds
   });
 }

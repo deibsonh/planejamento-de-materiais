@@ -1,5 +1,7 @@
 export type Scope = { supplier: string; material: string };
-export type Profile = { email: string; name: string; role: 'internal' | 'supplier' | 'carrier'; scopes: Scope[] };
+export const PROFILE_ROLES = ['admin','manager','internal','operator','partner'] as const;
+export type ProfileRole = typeof PROFILE_ROLES[number];
+export type Profile = { email: string; name: string; role: ProfileRole; scopes: Scope[]; active?: boolean };
 export const MATERIAL_TYPES = [
   'Cimento','Pedra','Areia','Aditivo','Sílica','Coque','CA-50','CA-60',
   'Desmoldante','Combustível','Madeira','Arruela','Outro'
@@ -12,11 +14,13 @@ export type Shipment = Scope & { id: string; date: string; arrival: string; quan
 export type Allocation = { entry: string; quantity: number; close: boolean };
 export type Receipt = Scope & { id: string; date: string; quantity: number; unit: string; converted: number; factor: number; operation: string; invoicedQuantity?: number; nf: string; freight: string; shipment: string; allocations: Allocation[]; author: string };
 export type Conversion = Scope & { unit: string; factor: number; operation: 'divide' | 'multiply' };
+export type Holiday = {date:string; description:string; active:boolean; annual?:boolean};
 export type Calendar = { holidays: string[]; shifts: number; weekdays?: number; saturdays?: number };
 export type Publication = { id: string; month: string; date: string; entries: Entry[]; calendar: Calendar; materials: Material[] };
 export type Data = {
   materials: Material[]; suppliers: string[]; entries: Entry[]; shipments: Shipment[]; receipts: Receipt[];
   conversions: Conversion[]; profiles: Profile[]; calendars: Record<string,Calendar>; publications: Publication[];
+  holidays?: Holiday[];
   supplierDetails?: Record<string,SupplierDetails>;
   history: {date: string; author: string; detail: string; requestId?: string; email?: string}[];
 };
@@ -50,8 +54,28 @@ export function received(data: Data, id: string) {
   return round(data.receipts.flatMap(r => r.allocations).filter(a => a.entry === id).reduce((sum, a) => sum + a.quantity, 0));
 }
 export function round(value: number) { return Math.round((value + Number.EPSILON) * 1000) / 1000; }
+export function isProfileActive(profile: Pick<Profile,'active'>) {
+  return profile.active !== false;
+}
+export function normalizeProfileRole(role:unknown): ProfileRole | undefined {
+  if (role === 'supplier' || role === 'carrier') return 'partner';
+  return PROFILE_ROLES.find(option=>option===role);
+}
+type ProfileIdentity = Pick<Profile,'role'> | null | undefined;
+export function canManageProfiles(profile: ProfileIdentity) {
+  return profile?.role === 'admin';
+}
+export function hasAdministrationAccess(profile: ProfileIdentity) {
+  return canManageProfiles(profile) || profile?.role === 'manager';
+}
+export function hasPdfAccess(profile: ProfileIdentity) {
+  return hasAdministrationAccess(profile) || profile?.role === 'internal';
+}
+export function hasOperationalAccess(profile: ProfileIdentity) {
+  return hasPdfAccess(profile) || profile?.role === 'operator';
+}
 export function allowed(profile: Profile, item: Scope) {
-  return profile.role === 'internal' || profile.scopes.some(s => s.material === item.material && s.supplier === item.supplier);
+  return hasOperationalAccess(profile) || profile.scopes.some(s => s.material === item.material && s.supplier === item.supplier);
 }
 export function calendarDays(month: string) {
   const [year, m] = month.split('-').map(Number);
@@ -62,8 +86,26 @@ export function calendarDays(month: string) {
       label: date.toLocaleDateString('pt-BR',{weekday:'long',timeZone:'UTC'})};
   });
 }
+export function listHolidays(data:Data):Holiday[] {
+  if (data.holidays) return data.holidays;
+  const legacyDates = new Set(Object.values(data.calendars).flatMap(calendar=>calendar.holidays));
+  return Array.from(legacyDates,date=>({date,description:'Feriado',active:true}));
+}
+export function getCalendar(data:Data,month:string):Calendar {
+  const settings = data.calendars[month] ?? defaultCalendar;
+  if (!data.holidays) return settings;
+  const holidays = new Set<string>();
+  for (const holiday of data.holidays) {
+    if (!holiday.active) continue;
+    const date = holiday.annual ? `${month.slice(0,4)}-${holiday.date}` : holiday.date;
+    if (!date.startsWith(month+'-')) continue;
+    const timestamp = Date.parse(date);
+    if (Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0,10) === date) holidays.add(date);
+  }
+  return {...settings,holidays:[...holidays].sort()};
+}
 export function isHoliday(data:Data,date:string) {
-  return data.calendars[date.slice(0,7)]?.holidays.includes(date) ?? false;
+  return getCalendar(data,date.slice(0,7)).holidays.includes(date);
 }
 export function workdays(month: string, calendar: Calendar) {
   const days = calendarDays(month).filter(d => !calendar.holidays.includes(d.iso));
@@ -72,7 +114,7 @@ export function workdays(month: string, calendar: Calendar) {
   return { weekdays, saturdays, total: weekdays + saturdays / (2 * calendar.shifts) };
 }
 export const defaultCalendar: Calendar = {holidays: [], shifts: 3};
-export const demoProfile: Profile = {email:'planejamento@romagnole.demo', name:'Equipe de Planejamento', role:'internal', scopes:[]};
+export const demoProfile: Profile = {email:'planejamento@materiais.demo', name:'Administrador', role:'admin', scopes:[]};
 export const months = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 export function monthLabel(month: string) { return months[Number(month.slice(5)) - 1] + ' ' + month.slice(0,4); }
 export function fmt(value: number, digits = 3) { return value.toLocaleString('pt-BR',{maximumFractionDigits:digits}); }

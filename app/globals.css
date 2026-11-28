@@ -102,12 +102,12 @@ svg{flex-shrink:0;vertical-align:middle}
 .page-heading{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:22px}
 .page-heading h1{font-family:"Russo One",sans-serif;font-size:28px;letter-spacing:-.4px;line-height:1.18;font-weight:400}
 .page-heading p{font-size:13px;color:var(--muted);margin-top:7px}
-.heading-actions,.tools,.table-buttons{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.heading-actions,.tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .button{display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;min-height:36px;padding:0 11px;border-radius:7px;border:1px solid var(--control-border);background:var(--paper);color:var(--ink);font-size:12px;font-weight:650;line-height:1.1}
 .button:hover,.button.selected{background:var(--accent-surface);border-color:var(--accent-border);color:var(--accent-strong)}
-.button.primary,.button.catalog-create{background:var(--primary-fill);border-color:var(--primary-fill);color:var(--primary-ink)}
+.button.primary{background:var(--primary-fill);border-color:var(--primary-fill);color:var(--primary-ink)}
 .button.primary{padding:0 13px}
-.button.primary:hover,.button.catalog-create:hover{background:var(--primary-hover);border-color:var(--primary-hover)}
+.button.primary:hover{background:var(--primary-hover);border-color:var(--primary-hover)}
 .month-control{display:flex;align-items:center;background:var(--paper);border:1px solid var(--control-border);border-radius:7px;height:36px}
 .month-control button{border:0;background:transparent;color:var(--muted);width:27px;height:32px;padding:0}
 .month-control button:hover{color:var(--accent-text);background:var(--accent-surface)}
@@ -154,7 +154,6 @@ td.empty{text-align:center;color:var(--muted);padding:34px 12px}
 .planning-table .actions-heading{text-align:right}
 .material-cell{display:flex;align-items:center;gap:8px}
 .material-cell small{display:block;color:var(--muted);font-size:10px;margin-top:2px}
-.profile-role-note{display:block;color:var(--muted);font-size:11px;margin-top:3px}
 .material-icon{border-radius:7px;display:grid;place-items:center;width:28px;height:28px;background:var(--accent-surface);color:var(--accent-strong)}
 .badge{display:inline-flex;align-items:center;gap:2px;font-size:10px;font-weight:700;padding:4px 7px;border-radius:15px}
 .badge.blue{background:var(--info-surface);color:var(--info-text)}.badge.green{background:var(--success-surface);color:var(--success-text)}
@@ -170,15 +169,22 @@ td.empty{text-align:center;color:var(--muted);padding:34px 12px}
 .stack{display:grid;gap:15px}
 .catalog{grid-template-columns:minmax(0,1fr)}
 .catalog-table th:last-child{width:1%;text-align:center}
-.button.catalog-create{
-  min-inline-size:184px;justify-content:flex-start;
-  min-height:40px;padding:0 12px 0 7px;gap:8px;border-radius:9px;font-weight:700
-}
-.catalog-create>svg{width:24px;height:24px;padding:4px;border-radius:5px;background:color-mix(in srgb,var(--primary-ink) 16%,transparent)}
+.catalog .catalog-table table{table-layout:fixed;min-width:540px}
+.catalog .catalog-table th:first-child,.catalog .catalog-table td:first-child{text-align:left}
+.catalog .catalog-table th:last-child{width:84px;text-align:right}
+.catalog .holiday-table th:last-child{width:112px}
+.catalog .catalog-table .catalog-actions{justify-content:flex-end}
+.catalog .catalog-table th,.catalog .catalog-table td:not(:last-child),.catalog .catalog-table .material-cell > span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.catalog .catalog-table .material-cell > svg{flex-shrink:0}
+.table-scroll:has(+ .catalog-pagination) tbody tr:last-child td{border-bottom:0}
+.catalog-pagination{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;padding:10px 14px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
 .catalog-actions{display:flex;justify-content:center;gap:2px;flex-shrink:0}
 .catalog-actions .icon-button{width:26px;height:26px}
 .catalog-actions .icon-button:not(.danger){color:var(--info-text)}
 .catalog-actions .icon-button:not(.danger):hover{background:var(--info-surface)}
+.profile-name{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.profile-levels{margin-top:15px}
+.profile-levels ul{display:grid;gap:4px;margin:0;list-style:none;color:var(--muted);font-size:12px}
 .calendar-info{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
 .calendar-info div{display:grid;gap:5px;min-width:65px}
 .calendar-info div span{color:var(--muted);font-size:11px}
@@ -201,25 +207,25 @@ input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
 .planning-dialog{width:min(880px,calc(100% - 26px))}
 .planning-calendar{min-inline-size:0;margin:0;padding:10px 11px 11px;border:1px solid var(--line);border-radius:9px;background:var(--surface-subtle)}
 .planning-calendar legend{padding:0 5px;font-weight:700}
-.planning-total{display:block;margin:8px 3px 0;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.planning-total{display:block;margin-inline-end:auto;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
 .planning-total strong{margin-inline-start:4px;color:var(--ink)}
+.holiday-note{margin-inline-end:auto;color:var(--muted);font-size:11px}
 .planning-scroll{overflow-x:auto;padding:3px}
 .planning-grid{display:grid;grid-template-columns:repeat(7,minmax(78px,1fr));gap:6px}
 .planning-weekday{text-align:center;color:var(--muted);font-size:11px;font-weight:700}
 .form-content .planning-day{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:5px}
 .planning-day span{text-align:center;padding-inline:2px}
 .form-content .planning-day input{min-width:0;padding:4px 5px;min-height:30px;text-align:center;font-variant-numeric:tabular-nums}
-.planning-day input:disabled{background:var(--surface-subtle)}
+.planning-day input:disabled{background:var(--surface-subtle);cursor:not-allowed}
 .form-content .planning-holiday{background:var(--danger-surface);color:var(--danger-text);text-align:center}
 .planning-holiday input:disabled{opacity:.65}
-.planning-holiday small{font-size:10px}
-.holiday-controls{display:flex;align-items:end;gap:8px;flex-wrap:wrap}
-.holiday-list{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;list-style:none}
-.holiday-list li{display:flex;align-items:center;gap:4px;padding-inline-start:8px;background:var(--paper);border:1px solid var(--line);border-radius:7px}
 .form-content textarea{resize:vertical}
 .allocation{border:1px solid var(--line);background:var(--surface-subtle);border-radius:9px;padding:11px;display:grid;gap:10px}
 .allocation-title h3,.details h3{font-size:13px}
 .allocation-title p,.info{color:var(--muted);font-size:12px;margin-top:3px;line-height:1.45}
+.permission-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px}
+.permission-heading .text-button{margin-inline-start:auto}
+.permissions select:invalid{color:var(--muted)}
 .allocation-row{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:9px}
 .allocation-grid:has(>.icon-button){grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}
 .allocation-grid>.icon-button{align-self:end}
@@ -239,7 +245,6 @@ input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
 .login-brand-mark{display:grid;place-items:center;flex-shrink:0;width:52px;height:52px;border-radius:14px;background:var(--accent-surface);color:var(--accent-text)}
 .login-brand .login-brand-mark{background:var(--white);color:var(--red-deep)}
 .login-brand p{font-family:"Russo One",sans-serif;font-size:clamp(24px,3.2vw,34px);line-height:1.14}
-.login-brand-name{font-family:Rajdhani,sans-serif;font-size:19px;font-weight:700}
 .login-card{display:grid;align-content:center;gap:22px;padding:clamp(24px,5vw,47px)}
 .login-card h1,.login-loading h1{font-family:"Russo One",sans-serif;font-size:clamp(21px,3vw,26px);font-weight:400;line-height:1.2}
 .login-card form{display:grid;gap:15px}
@@ -265,7 +270,6 @@ input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
   .login-brand .login-brand-mark{grid-row:span 2;width:44px;height:44px}
   .login-brand p{font-size:22px}
   .login-brand p br{display:none}
-  .login-brand-name{grid-column:2}
 }
 
 @media(max-width:1120px){.shell{grid-template-columns:205px minmax(0,1fr)}.content{padding-inline:19px}.topbar{padding-inline:19px}.page-heading h1{font-size:26px}.metrics{gap:8px}.metric{padding-inline:10px}.metric-icon{right:8px}}
@@ -276,5 +280,4 @@ input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
   .breadcrumb>span,.breadcrumb>svg{display:none}
   .breadcrumb .icon-button{flex-shrink:0}
   .environment{padding-inline:6px}
-  .button.catalog-create{min-height:44px}
 }

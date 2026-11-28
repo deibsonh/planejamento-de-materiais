@@ -24,14 +24,17 @@ export function initialData(demo: boolean): Data {
   ];
   data.receipts = [
     {id:'sample-receipt',material:'20.014',supplier:'Itaporanga',date:'2026-12-01',quantity:45.79,unit:'t',converted:29.353,factor:1.56,
-      operation:'divide',nf:'18457',freight:'FR-1024',shipment:'sample-shipment',author:'Romagnole',allocations:[{entry:'sample-0',quantity:29.353,close:false}]},
+      operation:'divide',nf:'18457',freight:'FR-1024',shipment:'sample-shipment',author:'Equipe de Planejamento',allocations:[{entry:'sample-0',quantity:29.353,close:false}]},
     {id:'sample-receipt-2',material:'22.829',supplier:'Said',date:'2026-12-01',quantity:45000,unit:'kg',converted:45000,factor:1,
-      operation:'identity',nf:'18321',freight:'',shipment:'',author:'Romagnole',allocations:[{entry:'sample-1',quantity:45000,close:false}]}
+      operation:'identity',nf:'18321',freight:'',shipment:'',author:'Equipe de Planejamento',allocations:[{entry:'sample-1',quantity:45000,close:false}]}
   ];
   data.calendars[demoMonth] = {holidays:['2026-12-04','2026-12-05','2026-12-06','2026-12-24','2026-12-25','2026-12-31'],shifts:3,weekdays:19,saturdays:4};
   data.profiles = [
-    ...[['Said','22.829'],['Itaporanga','20.014'],['CRS','56.157']].map(([name,material]) => ({email:name.toLowerCase()+'@parceiro.demo',name,role:'supplier' as const,scopes:[{material,supplier:name}]})),
-    {email:'baldacim@parceiro.demo',name:'Baldacim',role:'carrier',scopes:[{material:'22.829',supplier:'Said'},{material:'20.014',supplier:'Itaporanga'}]}
+    {email:'gestao@materiais.demo',name:'Gestão de Operações',role:'manager',scopes:[]},
+    {email:'equipe@materiais.demo',name:'Equipe de Planejamento',role:'internal',scopes:[]},
+    {email:'operacao@materiais.demo',name:'Equipe de Operação',role:'operator',scopes:[]},
+    ...[['Said','22.829'],['Itaporanga','20.014'],['CRS','56.157']].map(([name,material]) => ({email:name.toLowerCase()+'@parceiro.demo',name,role:'partner' as const,scopes:[{material,supplier:name}]})),
+    {email:'baldacim@parceiro.demo',name:'Baldacim',role:'partner',scopes:[{material:'22.829',supplier:'Said'},{material:'20.014',supplier:'Itaporanga'}]}
   ];
   return data;
 }
