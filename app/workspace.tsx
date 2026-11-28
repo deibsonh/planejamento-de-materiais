@@ -1,9 +1,20 @@
 'use client';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowDownToLine, ArrowLeftRight, ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, CirclePause, CirclePlay, Clock3, Container, Ellipsis, FileText, Flame, FlaskConical, Fuel, Gem, Grid3x3, Grip, History, Hourglass, KeyRound, LayoutDashboard, LogOut, Menu, Mountain, Package, PackageCheck, Pencil, Plus, Search, Settings2, Shapes, SlidersHorizontal, SprayCan, Trash2, TreePine, Truck, Users, X, type LucideIcon } from 'lucide-react';
+import { ArrowDownToLine, ArrowLeftRight, ArrowRight, Bell, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleAlert, CircleCheck, CircleDot, CirclePause, CirclePlay, Clock3, Container, Ellipsis, FileText, Flame, FlaskConical, Fuel, Gem, Grid3x3, Grip, History, Hourglass, Info, KeyRound, LayoutDashboard, LogOut, Menu, Mountain, Package, PackageCheck, Pencil, Plus, Search, Settings2, Shapes, SlidersHorizontal, SprayCan, Trash2, TriangleAlert, TreePine, Truck, Users, X, type LucideIcon } from 'lucide-react';
 import { dateLabel, getCalendar, fmt, getSupplierDetails, hasAdministrationAccess, hasOperationalAccess, hasPdfAccess, isProfileActive, listHolidays, monthLabel, received, round, currentMonth, workdays, type Data, type Entry, type MaterialType, type Profile } from '@/lib/model';
 import { demoMonth } from '@/lib/seed';
 import { OperationForm, roleLabel, type Operation } from './workspace-forms';
+
+const toastIcons = {info:Info,success:CircleCheck,warning:TriangleAlert,error:CircleAlert,default:Bell} as const;
+type ToastMessage = {type:keyof typeof toastIcons;title:string;description:string};
+function Toast({message,onDismiss}:{message:ToastMessage;onDismiss:()=>void}) {
+  const Icon = toastIcons[message.type];
+  return <div className={`toast toast-${message.type}`} role={message.type==='error'?'alert':'status'}>
+    <span className="toast-symbol"><Icon size={20} aria-hidden="true"/></span>
+    <div className="toast-content"><strong>{message.title}</strong><p>{message.description}</p></div>
+    <button type="button" className="icon-button" aria-label="Dispensar notificação" onClick={onDismiss}><X size={17} aria-hidden="true"/></button>
+  </div>;
+}
 
 type Tab = 'Visão geral'|'Programação'|'Envios'|'Recebimentos'|'PDF mensal'|'Cadastros'|'Perfis de acesso'|'Histórico';
 type State = {demo:boolean; profile:Profile|null; data:Data|null; mustChangePassword:boolean; canManageProfiles:boolean};
@@ -134,7 +145,7 @@ export default function Workspace() {
   const [showFilters,setShowFilters] = useState(false);
   const [historyFilters,setHistoryFilters] = useState(emptyHistoryFilters);
   const [operation,setOperation] = useState<Operation|null>(null);
-  const [toast,setToast] = useState('');
+  const [toast,setToast] = useState<ToastMessage|null>(null);
   const [menuId,setMenuId] = useState('');
   const [menuPosition,setMenuPosition] = useState({top:0,right:0});
   const [account,setAccount] = useState(false);
@@ -163,7 +174,7 @@ export default function Workspace() {
       window.removeEventListener('keydown',onKey);
     };
   },[menuId]);
-  useEffect(()=>{if(toast){const timer=setTimeout(()=>setToast(''),4200); return ()=>clearTimeout(timer);}},[toast]);
+  useEffect(()=>{if(toast){const timer=setTimeout(()=>setToast(null),toast.type==='error'||toast.type==='warning'?7000:5500); return ()=>clearTimeout(timer);}},[toast]);
   async function send(input:Record<string,unknown>) {
     const response = await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
     const result = await response.json();
@@ -171,11 +182,20 @@ export default function Workspace() {
     const refreshed = await reload();
     if (!canViewTab(tab,refreshed)) go('Visão geral');
     if (input.action==='setProfileActive') {
-      setToast(input.active ? 'Acesso reativado.' : 'Acesso desativado.');
-      return;
+      setToast(input.active
+        ? {type:'success',title:'Acesso reativado',description:'O perfil pode voltar a entrar no portal.'}
+        : {type:'warning',title:'Acesso desativado',description:'O perfil perdeu o acesso ao portal.'});
+    } else if (input.action==='clearHistory') {
+      setToast({type:'success',title:'Histórico atualizado',description:'Os registros selecionados foram excluídos.'});
+    } else if (['deleteMaterial','deleteSupplier','deleteConversion','deleteHoliday','deleteEntry','deleteShipment','deleteReceipt'].includes(String(input.action))) {
+      setToast({type:'success',title:'Registro excluído',description:'O registro foi removido da listagem.'});
+    } else if (input.action==='entryMonth') {
+      setToast({type:'success',title:'Programação salva',description:'As quantidades informadas foram registradas no calendário.'});
+    } else if (input.action==='cancel') {
+      setToast({type:'warning',title:'Programação cancelada',description:'A entrega foi retirada da programação ativa.'});
+    } else {
+      setToast({type:'default',title:'Alteração salva',description:'Os dados do planejamento foram atualizados.'});
     }
-    const deleted = ['deleteMaterial','deleteSupplier','deleteConversion','deleteHoliday','deleteEntry','deleteShipment','deleteReceipt','clearHistory'].some(action=>action===input.action);
-    setToast(deleted?'Registro excluído com sucesso.':input.action==='entryMonth'?'Programação salva com sucesso.':'Alteração salva com sucesso.');
   }
 
   function go(next:Tab) {setTab(next);setQuery('');setFilter('');setStatusFilter(inProgressFilter);setShowFilters(false);setMobile(false);setMenuId('');}
@@ -183,9 +203,10 @@ export default function Workspace() {
     const response = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
     const result = await response.json();
     if (!response.ok) throw new Error(result.error);
-    await reload();
+    const next = await reload();
     go('Visão geral');
     setAccount(false);
+    if (next.demo && next.profile) setToast({type:'info',title:'Perfil de demonstração',description:`Você está visualizando o portal como ${next.profile.name}.`});
   }
   async function submitAccess(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -220,12 +241,12 @@ export default function Workspace() {
       await reload();
       go('Visão geral');
     } catch {
-      setToast('Não foi possível sair. Tente novamente.');
+      setToast({type:'error',title:'Falha ao sair',description:'Tente encerrar a sessão novamente.'});
     }
   }
   const data = state?.data;
   const profile = state?.profile;
-  const notification = toast && <div className="toast" role="status">{toast}<button className="icon-button" aria-label="Dispensar" onClick={()=>setToast('')}><X size={16}/></button></div>;
+  const notification = toast && <Toast message={toast} onDismiss={()=>setToast(null)}/>;
   if (!profile || !data) {
     const changingPassword = state?.mustChangePassword;
     return <main className="login">
@@ -377,8 +398,8 @@ export default function Workspace() {
         <div className="account-wrap">
           <button className="account" onClick={()=>setAccount(!account)}><span className="avatar">{profileInitials}</span><span><strong>{profile.name}</strong><small>{roleLabel[profile.role]}</small></span><ChevronsUpDown size={14}/></button>
           {account && <div className="pop account-pop">
-            {state.demo ? <><span>Visualizar como</span><button onClick={()=>void access('').catch(e=>setToast(e.message))}>{roleLabel.admin}</button>
-              {data.profiles.filter(isProfileActive).map(p=><button key={p.email} onClick={()=>void access(p.email).catch(e=>setToast(e.message))}>{p.name} · {roleLabel[p.role]}</button>)}</>
+            {state.demo ? <><span>Visualizar como</span><button onClick={()=>void access('').catch(e=>setToast({type:'error',title:'Perfil indisponível',description:e.message}))}>{roleLabel.admin}</button>
+              {data.profiles.filter(isProfileActive).map(p=><button key={p.email} onClick={()=>void access(p.email).catch(e=>setToast({type:'error',title:'Perfil indisponível',description:e.message}))}>{p.name} · {roleLabel[p.role]}</button>)}</>
               : <button onClick={()=>void signOut()}><LogOut size={15}/> Sair</button>}
           </div>}
         </div>
