@@ -6,14 +6,14 @@ import { allowed, calendarDays, catalogUnit, dateLabel, deliveryDate, getCalenda
 const permanentDeletionTitles = {
   deleteEntry:'Excluir programação definitivamente',
   deleteShipment:'Excluir entrega definitivamente',
-  deleteShipmentLogged:'Excluir entrega com histórico',
+  deleteShipmentLogged:'Excluir entrega',
   deleteReceipt:'Excluir recebimento definitivamente',
   deleteReceiptLogged:'Excluir recebido com histórico',
   clearHistory:'Limpar histórico'
 } as const;
 const titles = {
   ...permanentDeletionTitles,
-  entry:'Editar programação', entryMonth:'Nova programação', receipt:'Registrar material recebido', shipment:'Registrar entrega', cancel:'Cancelar programação',
+  entry:'Editar programação', entryMonth:'Nova programação', receipt:'Registrar recebido', shipment:'Registrar entrega', cancel:'Cancelar programação',
   material:'Novo material', supplier:'Novo fornecedor', conversion:'Cadastrar conversão', profile:'Configurar perfil',
   calendar:'Calendário do mês', holiday:'Novo feriado', publish:'Salvar versão da programação', duplicate:'Vincular entregas',
   receiptDetails:'Detalhes do recebimento', revoke:'Revogar acesso', resetPassword:'Redefinir senha', setProfileActive:'Desativar acesso', setHolidayActive:'Desativar feriado'
@@ -172,7 +172,8 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
       if (previousScope) Object.assign(input,{previousSupplier:previousScope.supplier,previousMaterial:previousScope.material});
     }
     if (kind==='conversion' && deleting) Object.assign(input,previousScope);
-    if (kind==='shipment'||kind==='receipt') Object.assign(input,{unit:actualUnit,quantity:amount});
+    if (kind==='shipment'||kind==='receipt') input.quantity = amount;
+    if (kind==='receipt') input.unit = actualUnit;
     if (kind==='receipt') {
       if (editingReceipt) input.receiptId = editingReceipt.id;
       input.allocations = allocations.map(a=>({entry:a.entry,quantity:parseQuantity(a.amount),close:a.close}));
@@ -217,12 +218,17 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
         {kind==='entry'&&<div className="form-grid"><Field label="Data prevista"><Input name="date" type="date" initial={initial?.date || month+'-01'}/></Field><Field label={chosen?'Quantidade programada ('+chosen.unit+')':'Quantidade programada'}><Quantity initial={initial?.quantity}/></Field></div>}
         {(kind==='receipt'||kind==='shipment')&&<>
           <div className="form-grid">
-            <Field label={kind==='receipt'?'Data real do recebimento':'Data de entrega'}><Input name="date" type="date" initial={kind==='shipment' && shipment ? deliveryDate(shipment) : receipt?.date ?? today()}/></Field>
+            {kind==='receipt'&&<Field label="Data real do recebimento"><Input name="date" type="date" initial={receipt?.date ?? today()}/></Field>}
             <Field label={kind==='receipt'?'Quantidade recebida':'Quantidade na nota fiscal'}><input value={quantity} onChange={e=>setQuantity(e.target.value)} inputMode="decimal" placeholder="0,000" required/></Field>
-            <Field label={kind==='shipment'?'Unidade na nota fiscal':'Unidade'}><select value={actualUnit} onChange={e=>setUnit(e.target.value)} required><option value="">Selecione</option>{unitOptions.map(u=><option key={u}>{u}</option>)}</select></Field>
+            {kind==='shipment' ? <Field label="Unidade na nota fiscal"><Input name="unit" initial={shipment?.unit} placeholder="Informe a unidade"/></Field> :
+              <Field label="Unidade"><select value={actualUnit} onChange={e=>setUnit(e.target.value)} required><option value="">Selecione</option>{unitOptions.map(u=><option key={u}>{u}</option>)}</select></Field>}
             <Field label={kind==='shipment'?'Número da nota fiscal':'Nota fiscal'}><input name="nf" value={nf} onChange={e=>setNf(e.target.value)} maxLength={180} placeholder="Opcional"/></Field>
             <Field label="Número do frete"><Input name="freight" initial={movement?.freight} optional placeholder="Opcional"/></Field>
-            {kind==='shipment'&&<Field label="Observações" wide><textarea name="notes" rows={3} maxLength={1000} defaultValue={shipment?.notes} placeholder="Opcional"/></Field>}
+            {kind==='shipment'&&<>
+              <Field label="Observações" wide><textarea name="notes" rows={3} maxLength={1000} defaultValue={shipment?.notes} placeholder="Opcional"/></Field>
+              <Field label="Data de entrega"><Input name="date" type="date" initial={shipment ? deliveryDate(shipment) : today()}/></Field>
+              <Field label="Registrado por"><input value={shipment?.author ?? profile.name} readOnly/></Field>
+            </>}
             {kind==='receipt'&&<>
               {nf.trim()&&<Field label={actualUnit?'Quantidade na NF ('+actualUnit+')':'Quantidade na NF'}><input name="invoicedQuantity" defaultValue={editingReceipt?.invoicedQuantity===undefined ? undefined : quantityInputValue(editingReceipt.invoicedQuantity)} inputMode="decimal" placeholder="Opcional"/></Field>}
               <Field label="Entrega correspondente" wide><select name="shipment" defaultValue={editingReceipt?.shipment ?? ''}><option value="">Sem vínculo com uma entrega</option>{shipmentOptions.map(s=><option key={s.id} value={s.id}>{dateLabel(deliveryDate(s))} · {fmt(s.quantity)} {s.unit} · {s.nf?'NF '+s.nf:s.author}</option>)}</select></Field></>}

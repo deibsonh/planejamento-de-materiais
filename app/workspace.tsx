@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowDownToLine, ArrowRight, Bell, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleAlert, CircleCheck, CircleDot, Clock3, Container, Ellipsis, FileText, Flame, FlaskConical, Fuel, Gem, Grid3x3, Grip, History, Hourglass, Info, ListFilter, Tags, KeyRound, LayoutDashboard, LogOut, Menu, Mountain, Package, PackageCheck, Plus, Search, Settings2, Shapes, SlidersHorizontal, SprayCan, Trash2, TriangleAlert, TreePine, Truck, UserRound, Users, X, type LucideIcon } from 'lucide-react';
-import { dateLabel, deliveryDate, getCalendar, fmt, getSupplierDetails, hasAdministrationAccess, hasOperationalAccess, hasPdfAccess, isProfileActive, listHolidays, monthLabel, received, round, currentMonth, workdays, type Data, type Entry, type MaterialType, type Profile } from '@/lib/model';
+import { ArrowDownToLine, ArrowRight, Bell, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleAlert, CircleCheck, CircleDot, Clock3, Container, Ellipsis, FileText, Flame, FlaskConical, Fuel, Gem, Grid3x3, Grip, History, Hourglass, Info, ListFilter, Tags, KeyRound, LayoutDashboard, LogOut, Menu, Mountain, Package, PackageCheck, Plus, Settings2, Shapes, SprayCan, Trash2, TriangleAlert, TreePine, Truck, UserRound, Users, X, type LucideIcon } from 'lucide-react';
+import { allowed, dateLabel, deliveryDate, getCalendar, fmt, getSupplierDetails, hasAdministrationAccess, hasOperationalAccess, hasPdfAccess, isProfileActive, listHolidays, monthLabel, received, round, currentMonth, workdays, type Data, type Entry, type MaterialType, type Profile } from '@/lib/model';
 import { demoMonth } from '@/lib/seed';
 import { OperationForm, roleLabel, type Operation } from './workspace-forms';
 
@@ -44,6 +44,8 @@ const panelDescriptions: Record<Tab,string> = {
 };
 const blank = '—';
 const timeLabel = (iso:string) => new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'});
+const planningDayFormatter = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'});
+const currentPlanningDay = () => planningDayFormatter.format(new Date());
 const historyDayFormatter = new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short'});
 const normalizeSearch = (value:string) => value.trim().normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('pt-BR');
 const emptyHistoryFilters = {date:'',author:'',category:''};
@@ -142,11 +144,12 @@ function RowActions({label,children}:{label:string;children:ReactNode}) {
       }}>{children}</div>
   </td>;
 }
-function CatalogActions({operation,label,onOpen,children}:{operation:Operation;label:string;onOpen:(value:Operation)=>void;children?:ReactNode}) {
+const catalogSubjects = {material:'material',supplier:'fornecedor',conversion:'conversão',holiday:'feriado'} as const;
+function CatalogActions({operation,label,onOpen,children}:{operation:Operation & {kind:keyof typeof catalogSubjects};label:string;onOpen:(value:Operation)=>void;children?:ReactNode}) {
   return <RowActions label={'Ações de '+label}>
-    <button type="button" onClick={()=>onOpen(operation)}>Editar registro</button>
+    <button type="button" onClick={()=>onOpen(operation)}>Editar {catalogSubjects[operation.kind]}</button>
     {children}
-    <button type="button" className="danger" onClick={()=>onOpen({...operation,remove:true})}>Excluir registro</button>
+    <button type="button" className="danger" onClick={()=>onOpen({...operation,remove:true})}>Excluir {catalogSubjects[operation.kind]}</button>
   </RowActions>;
 }
 function FilterField({icon:Icon,children}:{icon:LucideIcon;children:ReactNode}) {
@@ -179,13 +182,12 @@ export default function Workspace() {
   const [state,setState] = useState<State|null>(null);
   const [failure,setFailure] = useState('');
   const [month,setMonth] = useState(demoMonth);
+  const [today,setToday] = useState(currentPlanningDay);
   const [tab,setTab] = useState<Tab>('Visão geral');
-  const [query,setQuery] = useState('');
   const [filter,setFilter] = useState('');
   const [supplierFilter,setSupplierFilter] = useState('');
   const [planningPageSize,setPlanningPageSize] = useState(10);
   const [statusFilter,setStatusFilter] = useState(inProgressFilter);
-  const [showFilters,setShowFilters] = useState(false);
   const [historyFilters,setHistoryFilters] = useState(emptyHistoryFilters);
   const [operation,setOperation] = useState<Operation|null>(null);
   const [toast,setToast] = useState<ToastMessage|null>(null);
@@ -202,6 +204,15 @@ export default function Workspace() {
     return result as State;
   }
   useEffect(()=>{reload().then(result=>setMonth(result.demo ? demoMonth : currentMonth())).catch(e=>setFailure(e.message));},[]);
+  useEffect(()=>{
+    const refreshDay = () => setToday(currentPlanningDay());
+    const timer = window.setInterval(refreshDay,60_000);
+    window.addEventListener('focus',refreshDay);
+    return ()=>{
+      window.clearInterval(timer);
+      window.removeEventListener('focus',refreshDay);
+    };
+  },[]);
   useEffect(()=>{if(toast){const timer=setTimeout(()=>setToast(null),toast.type==='error'||toast.type==='warning'?7000:5500); return ()=>clearTimeout(timer);}},[toast]);
   async function send(input:Record<string,unknown>) {
     const response = await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
@@ -226,7 +237,7 @@ export default function Workspace() {
     }
   }
 
-  function go(next:Tab) {setTab(next);setQuery('');setFilter('');setSupplierFilter('');setStatusFilter(next==='Programação'?inProgressFilter:'');setShowFilters(false);setMobile(false);}
+  function go(next:Tab) {setTab(next);setFilter('');setSupplierFilter('');setStatusFilter(next==='Programação'?inProgressFilter:'');setMobile(false);}
   async function access(email:string,password?:string) {
     const response = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
     const result = await response.json();
@@ -342,19 +353,18 @@ export default function Workspace() {
     {label:'Recebidos',value:receipts.length,caption:'Entradas registradas no mês',icon:PackageCheck,tone:'violet'},
     {label:'Entregas pendentes',value:open.length,caption:'Linhas com saldo em aberto',icon:Clock3,tone:'peach'}
   ];
-  const matching = (e: {material:string;supplier:string}) => (!filter || filter===e.material) &&
-    (!query || [materials.get(e.material)?.name || '',e.material,e.supplier].join(' ').toLocaleLowerCase('pt-BR').includes(query.trim().toLocaleLowerCase('pt-BR')));
   const planning = tab==='Programação';
-  const movement = tab==='Entregas' || tab==='Recebidos';
-  const matchingScope = (record:{supplier:string;material:string}) => matching(record) && (!supplierFilter || record.supplier===supplierFilter);
-  const today = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',dateStyle:'short'}).format(new Date());
-  const ordered = (planning ? selectedMonth : entries).filter(planning ? matchingScope : matching)
+  const overview = tab==='Visão geral';
+  const scheduledView = planning || overview;
+  const matchingScope = (record:{supplier:string;material:string}) =>
+    (!filter || record.material===filter) && (!supplierFilter || record.supplier===supplierFilter);
+  const scheduledEntries = overview ? data.entries.filter(entry=>entry.date===today && allowed(profile,entry)) : selectedMonth;
+  const ordered = scheduledView ? scheduledEntries.filter(matchingScope)
     .map(entry=>({entry,actual:received(data,entry.id)}))
     .map(row=>({...row,label:status(row.entry,row.actual,today)}))
-    .filter(({label})=>!planning || !statusFilter ||
+    .filter(({label})=>overview || !statusFilter ||
       (statusFilter===inProgressFilter ? label==='Pendente' || label==='Parcial' || label==='Atrasado' : label===statusFilter))
-    .sort((a,b)=>a.entry.date.localeCompare(b.entry.date));
-  const visibleEntries = ordered.slice(0,6);
+    .sort((a,b)=>a.entry.date.localeCompare(b.entry.date)) : [];
   const calendar = getCalendar(data,month);
   const holidays = tab==='Cadastros' && canViewTab(tab,state) ? listHolidays(data) : [];
   const work = workdays(month,calendar);
@@ -380,13 +390,13 @@ export default function Workspace() {
     const materialSelect = <select aria-label="Filtrar material" value={filter} onChange={e=>setFilter(e.target.value)}>
       <option value="">Todos os materiais</option>{Array.from(materials.values(),m=><option key={m.id} value={m.id}>{m.name}</option>)}
     </select>;
-    if (planning || movement) return <div className="tools movement-filters">
+    return <div className="tools movement-filters">
       <FilterField icon={Package}>{materialSelect}</FilterField>
       <FilterField icon={Truck}><select aria-label="Filtrar fornecedor" value={supplierFilter} onChange={e=>setSupplierFilter(e.target.value)}>
         <option value="">Todos os fornecedores</option>
         {data?.suppliers.map(supplier=><option key={supplier}>{supplier}</option>)}
       </select></FilterField>
-      <FilterField icon={ListFilter}><select aria-label="Filtrar situação" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+      {!overview&&<FilterField icon={ListFilter}><select aria-label="Filtrar situação" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
         <option value="">Todas situações</option>
         {planning ? <>
           <option value={inProgressFilter}>Situação andamento</option>
@@ -394,28 +404,23 @@ export default function Workspace() {
         </> : (tab==='Entregas'
           ? ['Entrega vinculada','Sem recebimento','Recebimento vinculado','Entrega conferida','Entrega com divergência']
           : ['Entrega vinculada','Sem entrega vinculada']).map(option=><option key={option}>{option}</option>)}
-      </select></FilterField>
-    </div>;
-    return <div className="tools">
-      <div className="search"><Search size={16}/><input aria-label="Buscar material ou fornecedor" placeholder="Buscar material ou fornecedor…" value={query} onChange={e=>setQuery(e.target.value)}/></div>
-      <button className={'button '+(showFilters||filter?'selected':'')} onClick={()=>setShowFilters(!showFilters)}><SlidersHorizontal size={15}/> Filtros</button>
-      {showFilters && materialSelect}
+      </select></FilterField>}
     </div>;
   }
   function planningTable() {
-    const columns = [planning?'Entrega':'Data prevista','Material','Fornecedor','Programado','Recebido',planning?'Pendente':'Saldo','Situação',...(operational?['Ações']:[])];
+    const columns = ['Entrega','Material','Fornecedor','Programado','Recebido','Pendente','Situação',...(operational?['Ações']:[])];
     const renderRow = ({entry:e,actual,label}:typeof ordered[number])=>{
         const material=materials.get(e.material);
         const balance = e.canceled || e.closed ? 0 : Math.max(0,round(e.quantity-actual));
         const quantityCell = (quantity:number) => <td><strong>{fmt(quantity)}</strong> <span className="muted">{material?.unit}</span></td>;
-        return <tr key={e.id}><td className="date-cell"><time dateTime={e.date}>{dateLabel(e.date)}{planning&&<small>{weekdayFormatter.format(new Date(e.date))}</small>}</time></td><td><div className="material-cell"><MaterialIcon type={material?.type}/><div><strong>{material?.name || e.material}</strong><small>{e.material}</small></div></div></td>
+        return <tr key={e.id}><td className="date-cell"><time dateTime={e.date}>{dateLabel(e.date)}<small>{weekdayFormatter.format(new Date(e.date))}</small></time></td><td><div className="material-cell"><MaterialIcon type={material?.type}/><div><strong>{material?.name || e.material}</strong><small>{e.material}</small></div></div></td>
           <td>{e.supplier}</td>{quantityCell(e.quantity)}
-          {planning || actual ? quantityCell(actual) : <td><span className="muted">{blank}</span></td>}
-          {planning ? quantityCell(balance) : <td>{e.canceled || e.closed ? blank : fmt(balance)}</td>}
+          {quantityCell(actual)}
+          {quantityCell(balance)}
           <td><Badge label={label} tone={planningStatuses[label].tone}/></td>
           {operational && <RowActions label="Ações da programação">
             <button type="button" onClick={()=>setOperation({kind:'entry',id:e.id})} disabled={e.canceled||e.closed}>Editar programação</button>
-            <button type="button" onClick={()=>setOperation({kind:'receipt',id:e.id})} disabled={e.canceled||e.closed||actual>=e.quantity}>Registrar material recebido</button>
+            <button type="button" onClick={()=>setOperation({kind:'receipt',id:e.id})} disabled={e.canceled||e.closed||actual>=e.quantity}>Registrar recebido</button>
             <button type="button" className="danger" onClick={()=>setOperation({kind:'cancel',id:e.id})} disabled={e.canceled||e.closed||actual>=e.quantity}>Cancelar programação</button>
             {canDeletePermanently&&<button type="button" className="danger" onClick={()=>setOperation({kind:'deleteEntry',id:e.id})}>Excluir definitivamente</button>}
           </RowActions>}
@@ -424,7 +429,7 @@ export default function Workspace() {
     if (planning) return <PaginatedTable key={paginationKey}
       label="programação do mês" columns={columns} items={ordered} newestFirst renderRow={renderRow}
       pageSize={planningPageSize} onPageSizeChange={setPlanningPageSize}/>;
-    return <Table columns={columns} empty={!visibleEntries.length}>{visibleEntries.map(renderRow)}</Table>;
+    return <Table columns={columns} empty={!ordered.length} emptyLabel="Nenhuma entrega para hoje com os filtros selecionados.">{ordered.map(renderRow)}</Table>;
   }
   const history = tab==='Histórico' ? data.history : [];
   const authorQuery = normalizeSearch(historyFilters.author);
@@ -466,7 +471,7 @@ export default function Workspace() {
             {visiblePlanningMenu.some(item=>item.label===tab) && <div className="month-control"><button aria-label="Mês anterior" onClick={()=>setMonth(nonce(month,-1))}><ChevronLeft size={15}/></button><label><CalendarDays size={16}/><span>{monthLabel(month)}</span><ChevronDown size={12}/><input type="month" aria-label="Selecionar mês" value={month} onChange={e=>{if(/^\d{4}-\d{2}$/.test(e.target.value))setMonth(e.target.value);}}/></label><button aria-label="Próximo mês" onClick={()=>setMonth(nonce(month,1))}><ChevronRight size={15}/></button></div>}
             {(tab==='Visão geral'||tab==='Programação'&&operational) && <button className="button primary" onClick={primary}><Plus size={17}/>{primaryTitle}</button>}
             {tab==='Entregas' && <button className="button primary" onClick={()=>setOperation({kind:'shipment'})}><Plus size={17}/> Registrar entrega</button>}
-            {tab==='Recebidos' && operational && <button className="button primary" onClick={()=>setOperation({kind:'receipt'})}><Plus size={17}/> Registrar material recebido</button>}
+            {tab==='Recebidos' && operational && <button className="button primary" onClick={()=>setOperation({kind:'receipt'})}><Plus size={17}/> Registrar recebido</button>}
             {tab==='Perfis de acesso' && canViewTab(tab,state) && <button className="button primary" onClick={()=>setOperation({kind:'profile'})}><Plus size={17}/> Novo perfil</button>}
           </div>
         </div>
@@ -474,25 +479,25 @@ export default function Workspace() {
           <section className="hero"><div className="hero-content"><span className="hero-kicker"><CalendarDays size={14}/> PROGRAMAÇÃO MENSAL</span><h2>{monthLabel(month)}</h2><p>{open.length ? `${open.length} ${open.length===1?'linha com saldo pendente':'linhas com saldo pendente'} na programação.` : 'Nenhuma entrega pendente neste mês.'}</p><button onClick={()=>go('Programação')}>Ver programação <ArrowRight size={15}/></button></div><HeroArt/></section>
           <section className="metrics" aria-label="Indicadores do mês">{counts.map(({label,value,caption,icon:Icon,tone})=><article key={label} className="metric"><span className={'metric-icon '+tone}><Icon size={19}/></span><div className="metric-value">{value.toLocaleString('pt-BR')}</div><h3>{label}</h3><p>{caption}</p></article>)}</section>
         </>}
-        {(tab==='Visão geral'||planning)&& <section className={planning?'panel planning-table':'panel'}>
-          <div className="panel-heading"><div><h2>{tab==='Visão geral'?'Entregas programadas':'Programação do mês'}</h2><p>Quantidade planejada, recebida e situação por linha.</p></div>{toolbar()}</div>
+        {scheduledView&& <section className="panel planning-table">
+          <div className="panel-heading"><div><h2>{overview?'Entregas de hoje':'Programação do mês'}</h2><p>Quantidade planejada, recebida e situação por linha.</p></div>{toolbar()}</div>
           {planningTable()}
-          {!planning&&<div className="panel-footer"><span>{visibleEntries.length} de {ordered.length} registros</span><button className="text-button" onClick={()=>go('Programação')}>Ver programação completa <ArrowRight size={15}/></button></div>}
+          {!planning&&<div className="panel-footer"><span>{ordered.length} {ordered.length===1?'registro':'registros'}</span><button className="text-button" onClick={()=>{setMonth(today.slice(0,7));go('Programação');}}>Ver programação completa <ArrowRight size={15}/></button></div>}
         </section>}
         {tab==='Entregas'&& <section className="panel"><div className="panel-heading"><h2>Entregas registradas</h2>{toolbar()}</div>
           <PaginatedTable key={paginationKey} label="entregas" pageSize={planningPageSize} onPageSizeChange={setPlanningPageSize}
-            columns={['Data de entrega','Material','Fornecedor','Quantidade na nota fiscal','Número da nota fiscal','Número do frete','Registrado por','Conferência',...(operational?['Ações']:[])]}
+            columns={['Data de entrega','Material','Fornecedor','Quantidade na nota fiscal','Número da nota fiscal','Número do frete','Registrado por','Conferência','Ações']}
             items={deliveryRows} newestFirst renderRow={({shipment:s,detail,tone})=>
               <tr key={s.id}><td>{dateLabel(deliveryDate(s))}</td><td><strong>{materials.get(s.material)?.name}</strong></td><td>{s.supplier}</td>
                 <td>{fmt(s.quantity)} {s.unit}</td><td>{s.nf||blank}</td><td>{s.freight||blank}</td><td>{s.author}</td><td><Badge label={detail} tone={tone}/></td>
-                {operational && <RowActions label="Ações da entrega">
-                  <button type="button" disabled={!!s.duplicateOf} onClick={()=>setOperation({kind:'duplicate',id:s.id})}>Vincular entrega</button>
-                  {canDeletePermanently&&<>
+                <RowActions label="Ações da entrega">
+                  {operational && <button type="button" disabled={!!s.duplicateOf} onClick={()=>setOperation({kind:'duplicate',id:s.id})}>Vincular entrega</button>}
+                  {allowed(profile,s)&&<>
                     <button type="button" onClick={()=>setOperation({kind:'shipment',id:s.id})}>Editar entrega</button>
-                    <button type="button" className="danger" onClick={()=>setOperation({kind:'deleteShipmentLogged',id:s.id})}>Excluir com histórico</button>
-                    <button type="button" className="danger" onClick={()=>setOperation({kind:'deleteShipment',id:s.id})}>Excluir definitivamente</button>
+                    <button type="button" className="danger" onClick={()=>setOperation({kind:'deleteShipmentLogged',id:s.id})}>Excluir entrega</button>
                   </>}
-                </RowActions>}
+                  {canDeletePermanently&&<button type="button" className="danger" onClick={()=>setOperation({kind:'deleteShipment',id:s.id})}>Excluir definitivamente</button>}
+                </RowActions>
               </tr>}/>
         </section>}
         {tab==='Recebidos'&& <section className="panel"><div className="panel-heading"><h2>Materiais recebidos</h2>{toolbar()}</div>
@@ -503,8 +508,8 @@ export default function Workspace() {
               <RowActions label="Ações do recebimento">
                 <button type="button" onClick={()=>setOperation({kind:'receiptDetails',id:r.id})}>Ver detalhes</button>
                 {canDeletePermanently&&<>
-                  <button type="button" onClick={()=>setOperation({kind:'receipt',id:r.id})}>Editar recebido</button>
-                  <button type="button" className="danger" onClick={()=>setOperation({kind:'deleteReceiptLogged',id:r.id})}>Excluir com histórico</button>
+                  <button type="button" onClick={()=>setOperation({kind:'receipt',id:r.id})}>Editar material recebido</button>
+                  <button type="button" className="danger" onClick={()=>setOperation({kind:'deleteReceiptLogged',id:r.id})}>Excluir material recebido</button>
                   <button type="button" className="danger" onClick={()=>setOperation({kind:'deleteReceipt',id:r.id})}>Excluir definitivamente</button>
                 </>}
               </RowActions></tr>}/>
@@ -592,7 +597,7 @@ export default function Workspace() {
               return <tr key={p.email}>
                 <td><div className="profile-name"><strong>{p.name}</strong>{!active&&<Badge label="Inativo" tone="gray"/>}</div></td><td>{p.email}</td><td>{roleLabel[p.role]}</td>
                 <RowActions label={`Ações de ${p.name}`}>
-                  <button type="button" onClick={()=>setOperation({kind:'profile',id:p.email})}>Editar registro</button>
+                  <button type="button" onClick={()=>setOperation({kind:'profile',id:p.email})}>Editar perfil</button>
                   {!state.demo&&<button type="button" onClick={()=>setOperation({kind:'resetPassword',id:p.email})}>Redefinir senha</button>}
                   <button type="button" disabled={ownProfile} onClick={()=>setOperation({kind:'setProfileActive',id:p.email,active:!active})}>{accessAction}</button>
                   <button type="button" className="danger" disabled={ownProfile} onClick={()=>setOperation({kind:'revoke',id:p.email})}>Revogar acesso</button>
@@ -634,7 +639,7 @@ export default function Workspace() {
             renderRow={record=><tr key={record.id}>
               <td>{timeLabel(record.date)}</td><td><strong>{record.author}</strong></td><td>{record.category}</td><td>{record.detail}</td>
               {canDeletePermanently&&<RowActions label={`Ações do registro de ${record.author} em ${timeLabel(record.date)}`}>
-                <button type="button" className="danger" onClick={()=>setOperation({kind:'clearHistory',historyIds:[record.id]})}>Excluir registro</button>
+                <button type="button" className="danger" onClick={()=>setOperation({kind:'clearHistory',historyIds:[record.id]})}>Excluir entrada do histórico</button>
               </RowActions>}
             </tr>}/>
         </section>}

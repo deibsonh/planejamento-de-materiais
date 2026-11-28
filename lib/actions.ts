@@ -98,12 +98,11 @@ const historyCategories:Partial<Record<string,HistoryCategory>> = {
 export function apply(data:Data,profile:Profile,input:Input) {
   need(input && typeof input === 'object' && !Array.isArray(input),'Dados de registro inválidos.');
   const action = value(input,'action');
-  const modifyingMovement = ['deleteShipmentLogged','deleteReceiptLogged'].includes(action) ||
-    (action==='shipment' && Boolean(value(input,'id'))) || (action==='receipt' && Boolean(value(input,'receiptId')));
-  if (((modifyingMovement || profileActions.has(action) || permanentDeletionActions.has(action)) && !canManageProfiles(profile)) ||
+  const modifyingReceipt = action==='deleteReceiptLogged' || (action==='receipt' && Boolean(value(input,'receiptId')));
+  if (((modifyingReceipt || profileActions.has(action) || permanentDeletionActions.has(action)) && !canManageProfiles(profile)) ||
       (administrationActions.has(action) && !hasAdministrationAccess(profile)) ||
       ((action === 'calendar' || action === 'publish') && !hasPdfAccess(profile)) ||
-      (action !== 'shipment' && !hasOperationalAccess(profile))) {
+      (!['shipment','deleteShipmentLogged'].includes(action) && !hasOperationalAccess(profile))) {
     throw new ForbiddenError('Seu perfil não pode realizar essa operação.');
   }
   if (permanentDeletionActions.has(action)) {
@@ -199,6 +198,7 @@ export function apply(data:Data,profile:Profile,input:Input) {
       const key = value(input,'id');
       const previous = data.shipments.find(record=>record.id===key);
       need(!key || previous,'Entrega não encontrada.');
+      if (previous && !allowed(profile,previous)) throw new ForbiddenError('Seu perfil não pode alterar esta entrega.');
       const item = scope(data,input,profile);
       if (previous && !same(previous,item)) {
         need(!previous.duplicateOf && !data.shipments.some(record=>record.duplicateOf===key) &&
@@ -215,11 +215,12 @@ export function apply(data:Data,profile:Profile,input:Input) {
         notes,author:previous?.author ?? author};
       need(shipment.freight.length <= 180,'Informe um número de frete com até 180 caracteres.');
       const orderUnit = data.materials.find(m => m.id === item.material)!.unit;
-      const conversion = shipment.unit === orderUnit ? undefined : data.conversions.find(c=>same(c,item) && c.unit===shipment.unit);
+      const standardUnit = sameUnit(shipment.unit,orderUnit);
+      const conversion = standardUnit ? undefined : data.conversions.find(c=>same(c,item) && sameUnit(c.unit,shipment.unit));
       const sameMeasurement = previous && same(previous,item) && previous.unit===shipment.unit && previous.quantity===shipment.quantity;
-      need(sameMeasurement || shipment.unit === orderUnit || conversion,'Unidade sem conversão cadastrada.');
-      const converted = sameMeasurement ? previous.converted :
-        round(!conversion ? shipment.quantity : conversion.operation==='divide' ? shipment.quantity/conversion.factor : shipment.quantity*conversion.factor);
+      const converted = sameMeasurement && previous.converted!==undefined ? previous.converted : conversion
+        ? round(conversion.operation==='divide' ? shipment.quantity/conversion.factor : shipment.quantity*conversion.factor)
+        : standardUnit ? round(shipment.quantity) : undefined;
       need(converted===undefined || (Number.isFinite(converted) && converted > 0 && converted <= 1e10),'A quantidade convertida precisa ser válida.');
       need(!shipment.arrival || shipment.arrival >= shipment.date,'A previsão de chegada deve ser igual ou posterior à expedição.');
       const record = {...shipment,converted};
@@ -231,6 +232,7 @@ export function apply(data:Data,profile:Profile,input:Input) {
       const key = value(input,'id');
       const target = data.shipments.find(item=>item.id===key);
       need(target,'Entrega não encontrada.');
+      if (!allowed(profile,target)) throw new ForbiddenError('Seu perfil não pode excluir esta entrega.');
       removeShipment(data,key);
       log = `Excluiu entrega de ${target.supplier} · ${target.material} · ${dateLabel(target.arrival || target.date)}`;
       break;
