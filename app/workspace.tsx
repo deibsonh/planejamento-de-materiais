@@ -83,11 +83,11 @@ function PaginatedTable<T>({label,columns,items,emptyLabel,renderRow,newestFirst
     <Table columns={columns} empty={!items.length} emptyLabel={emptyLabel}>
       {pageItems.map((item,index)=>renderRow(item,offset+index))}
     </Table>
-    {pageCount>1&&<nav className="catalog-pagination" aria-label={`Paginação de ${label}`}>
+    <nav className="catalog-pagination" aria-label={`Paginação de ${label}`}>
       <button type="button" className="button" disabled={page===1} onClick={()=>setPage(page-1)}>Anterior</button>
       <span aria-live="polite">Página {page} de {pageCount}</span>
       <button type="button" className="button" disabled={page===pageCount} onClick={()=>setPage(page+1)}>Próxima</button>
-    </nav>}
+    </nav>
   </>;
 }
 function CatalogActions({operation,label,onOpen,children}:{operation:Operation;label:string;onOpen:(value:Operation)=>void;children?:ReactNode}) {
@@ -501,18 +501,17 @@ export default function Workspace() {
           <section className="panel profile-levels" aria-labelledby="profile-levels-title">
             <div className="panel-heading"><div>
               <h2 id="profile-levels-title">Níveis de acesso</h2>
-              <p>Consulte os recursos disponíveis em cada nível.</p>
+              <p>Na ordem abaixo, cada nível tem as restrições do nível anterior e perde acesso a mais um recurso ou área.</p>
             </div></div>
             <ul className="panel-body" role="list">
-              <li>{roleLabel.partner} - Recursos restante</li>
-              <li>{roleLabel.operator} - Menos PDF mensal</li>
-              <li>{roleLabel.internal} - Menos administração</li>
-              <li>{roleLabel.manager} - Menos perfis de acesso</li>
-              <li>{roleLabel.admin} - Todos os recursos</li>
+              <li>Nível 4 - Todos os recursos, para administradores</li>
+              <li>Nível 3 - Menos perfis de acesso, para gerenciadores</li>
+              <li>Nível 2 - Menos administração, para auxiliares</li>
+              <li>Nível 1 - Menos PDF mensal, para terceiros</li>
             </ul>
           </section>
         </>}
-        {tab==='Histórico'&&canViewTab(tab,state)&& <section className="panel">
+        {tab==='Histórico'&&canViewTab(tab,state)&& <section className="panel history-table">
           <div className="panel-heading"><h2>Alterações registradas</h2></div>
           <PaginatedTable label="histórico" columns={['Data e hora','Responsável','Alteração']} items={data.history} newestFirst
             renderRow={(h,i)=><tr key={h.requestId ? JSON.stringify([h.email,h.requestId]) : h.date+i}><td>{timeLabel(h.date)}</td><td><strong>{h.author}</strong></td><td>{h.detail}</td></tr>}/>

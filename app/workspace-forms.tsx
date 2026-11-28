@@ -18,13 +18,13 @@ const catalogOperations = {
 export type Operation = {id?:string;scope?:Scope;remove?:boolean} & (
   {kind:Exclude<keyof typeof titles,'setProfileActive'|'setHolidayActive'>} | {kind:'setProfileActive'|'setHolidayActive';id:string;active:boolean}
 );
-export const roleLabel = {
-  partner:'Nível 1',
-  operator:'Nível 2',
-  internal:'Nível 3',
-  manager:'Nível 4',
-  admin:'Nível 5'
-} satisfies Record<Profile['role'],string>;
+const accessOptions = {
+  partner:'Nível 1 - Terceiro',
+  internal:'Nível 2 - Auxiliar',
+  manager:'Nível 3 - Gerenciador',
+  admin:'Nível 4 - Administrador'
+} satisfies Record<Exclude<Profile['role'],'operator'>,string>;
+export const roleLabel = {...accessOptions,operator:accessOptions.partner};
 type Props = {operation:Operation;profile:Profile;data:Data;month:string;demo:boolean;onClose:()=>void;onSave:(input:Record<string,unknown>)=>Promise<void>};
 const today = () => {
   const parts = new Intl.DateTimeFormat('en-CA',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:'America/Sao_Paulo'}).formatToParts(new Date());
@@ -245,7 +245,7 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
         {deleting&&catalog&&<p>Excluir {catalog.subject} <strong>{catalogName}</strong>?</p>}
         {kind==='profile'&&<>
           <div className="form-grid">
-            <Field label="Tipo de acesso"><select value={role} onChange={e=>setRole(e.target.value as Profile['role'])}>{Object.entries(roleLabel).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></Field>
+            <Field label="Tipo de acesso"><select value={role==='operator'?'partner':role} onChange={e=>setRole(e.target.value as Profile['role'])}>{Object.entries(accessOptions).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></Field>
             <Field label="Nome do perfil"><Input name="name" initial={existingProfile?.name} placeholder="Informe o nome do perfil"/></Field>
             <Field label="E-mail autorizado" wide={!showTemporaryPassword}><Input name="email" type="email" initial={existingProfile?.email} placeholder="contato@empresa.com.br"/></Field>
             {showTemporaryPassword&&<Field label="Senha temporária"><input name="password" type="password" autoComplete="new-password" placeholder="Informe a senha temporária" required/></Field>}

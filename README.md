@@ -30,10 +30,9 @@ A base de produção começa vazia. Emissões do PDF podem usar a programação 
 
 | Nível | Acesso |
 | --- | --- |
-| Nível 1 | Consulta de registros e lançamento de envios para as combinações de fornecedor e material autorizadas |
-| Nível 2 | Visão geral, Programação, Envios e Recebimentos |
-| Nível 3 | Visão geral, Programação, Envios, Recebimentos e PDF mensal |
-| Nível 4 | Todas as áreas, exceto Perfis de acesso |
-| Nível 5 | Todas as áreas |
+| Nível 4 - Administrador | Todos os recursos |
+| Nível 3 - Gerenciador | Sem acesso a Perfis de acesso |
+| Nível 2 - Auxiliar | Sem acesso à Administração |
+| Nível 1 - Terceiro | Sem acesso ao PDF mensal |
 
-Os antigos tipos E, D, C, B e A correspondem aos níveis 1, 2, 3, 4 e 5, respectivamente. Os perfis preservam suas permissões cadastradas.
+Cada nível inferior acumula as restrições dos níveis acima. Novos perfis de terceiros consultam registros e lançam envios para as combinações de fornecedor e material autorizadas. Perfis existentes de operação aparecem no nível 1 e preservam as permissões já cadastradas.

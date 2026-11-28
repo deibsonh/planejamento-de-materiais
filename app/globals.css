@@ -149,6 +149,10 @@ td{padding:8px 13px;border-bottom:1px solid var(--line);color:var(--muted);heigh
 tr:last-child td{border-bottom:0}
 td strong{color:var(--ink);font-weight:675}
 td.empty{text-align:center;color:var(--muted);padding:34px 12px}
+.history-table table{table-layout:fixed;min-width:460px;white-space:normal;overflow-wrap:anywhere}
+.history-table th:nth-child(1){width:18%}
+.history-table th:nth-child(2){width:24%}
+.history-table td{line-height:1.45}
 .date-cell{font-variant-numeric:tabular-nums}
 .date-cell small{display:block;margin-top:3px;font-size:10px}
 .planning-table .actions-heading{text-align:right}
@@ -177,7 +181,13 @@ td.empty{text-align:center;color:var(--muted);padding:34px 12px}
 .catalog .catalog-table th,.catalog .catalog-table td:not(:last-child),.catalog .catalog-table .material-cell > span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .catalog .catalog-table .material-cell > svg{flex-shrink:0}
 .table-scroll:has(+ .catalog-pagination) tbody tr:last-child td{border-bottom:0}
-.catalog-pagination{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;padding:10px 14px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+.catalog-pagination{
+  position:sticky;bottom:0;z-index:2;
+  display:grid;grid-template-columns:minmax(0,84px) minmax(0,108px) minmax(0,84px);
+  align-items:center;justify-content:center;gap:8px;padding:10px 14px;
+  border-top:1px solid var(--line);border-radius:0 0 11px 11px;background:var(--paper);
+  color:var(--muted);font-size:12px;text-align:center
+}
 .catalog-actions{display:flex;justify-content:center;gap:2px;flex-shrink:0}
 .catalog-actions .icon-button{width:26px;height:26px}
 .catalog-actions .icon-button:not(.danger){color:var(--info-text)}

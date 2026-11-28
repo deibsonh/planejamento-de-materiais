@@ -305,7 +305,7 @@ export function apply(data:Data,profile:Profile,input:Input) {
       need(!data.profiles.some(p=>p!==previous && p.email.trim().toLowerCase()===email),'Já existe um perfil com esse e-mail.');
       need(!isBootstrapAdmin(email),'Este e-mail pertence ao administrador padrão. Informe outro e-mail.');
       const role = normalizeProfileRole(value(input,'role'));
-      need(role,'Selecione um tipo de acesso.');
+      need(role && (role!=='operator' || previous?.role==='operator'),'Selecione um tipo de acesso.');
       const operational = hasOperationalAccess({role});
       const scopes = !operational && Array.isArray(input.scopes) ? input.scopes.map(item=>scope(data,item,profile)) : [];
       need(operational || scopes.length,'Selecione pelo menos uma combinação de fornecedor e material.');
