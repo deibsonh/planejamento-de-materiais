@@ -101,7 +101,7 @@ function HistoryPeriodFilter({from,to,onChange}:{from:string;to:string;onChange:
     <button type="button" className="button history-period" aria-haspopup="dialog" onClick={()=>{
       setDraft({from,to});
       dialog.current?.showModal();
-    }}><CalendarDays size={15} aria-hidden="true"/>{label}<ChevronDown size={14} aria-hidden="true"/></button>
+    }}>{label}</button>
     <dialog ref={dialog} className="dialog history-period-dialog" aria-labelledby="history-period-title">
       <form className="dialog-content" onSubmit={event=>{
         event.preventDefault();
@@ -575,20 +575,22 @@ export default function Workspace() {
         </>}
         {tab==='Histórico'&&canViewTab(tab,state)&& <section className="panel history-table">
           <div className="panel-heading"><h2>Alterações registradas</h2>
-            {canDeletePermanently&&<button type="button" className="button danger" disabled={!filteredHistory.length}
-              onClick={()=>setOperation({kind:'clearHistory',historyIds:filteredHistory.map(record=>record.id)})}>
-              <Trash2 size={15} aria-hidden="true"/> {historyFiltered?'Limpar resultados':'Limpar histórico'}
-            </button>}
-          </div>
-          <div className="tools history-filters" role="group" aria-label="Filtros do histórico">
-            <HistoryPeriodFilter from={historyFilters.from} to={historyFilters.to}
-              onChange={(from,to)=>setHistoryFilters(filters=>({...filters,from,to}))}/>
-            <input type="search" aria-label="Responsável" placeholder="Buscar responsável" value={historyFilters.author}
-              onChange={e=>setHistoryFilter('author',e.target.value)}/>
-            <select aria-label="Tipo" value={historyFilters.category} onChange={e=>setHistoryFilter('category',e.target.value)}>
-              <option value="">Tipo: todos</option>
-              {HISTORY_CATEGORIES.map(category=><option key={category} value={category}>Tipo: {category}</option>)}
-            </select>
+            <div className="tools history-filters" role="group" aria-label="Filtros do histórico">
+              <input type="search" aria-label="Responsável" placeholder="Buscar responsável" value={historyFilters.author}
+                onChange={e=>setHistoryFilter('author',e.target.value)}/>
+              <HistoryPeriodFilter from={historyFilters.from} to={historyFilters.to}
+                onChange={(from,to)=>setHistoryFilters(filters=>({...filters,from,to}))}/>
+              <select aria-label="Tipo" value={historyFilters.category} onChange={e=>setHistoryFilter('category',e.target.value)}>
+                <option value="">Todos os tipos</option>
+                {HISTORY_CATEGORIES.map(category=><option key={category} value={category}>
+                  Tipo {category==='PDF mensal' ? category : category.toLocaleLowerCase('pt-BR')}
+                </option>)}
+              </select>
+              {canDeletePermanently&&<button type="button" className="button danger" disabled={!filteredHistory.length}
+                onClick={()=>setOperation({kind:'clearHistory',historyIds:filteredHistory.map(record=>record.id)})}>
+                <Trash2 size={15} aria-hidden="true"/> {historyFiltered?'Limpar resultados':'Limpar histórico'}
+              </button>}
+            </div>
           </div>
           <PaginatedTable key={JSON.stringify(historyFilters)} label="histórico"
             columns={['Data e hora','Responsável','Tipo','Alteração',...(canDeletePermanently?['Ações']:[])]}
