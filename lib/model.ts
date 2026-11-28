@@ -17,12 +17,17 @@ export type Conversion = Scope & { unit: string; factor: number; operation: 'div
 export type Holiday = {date:string; description:string; active:boolean; annual?:boolean};
 export type Calendar = { holidays: string[]; shifts: number; weekdays?: number; saturdays?: number };
 export type Publication = { id: string; month: string; date: string; entries: Entry[]; calendar: Calendar; materials: Material[] };
+export const HISTORY_CATEGORIES = ['Programação','Envios','Recebimentos','Cadastros','Perfis de acesso','PDF mensal','Outros'] as const;
+export type HistoryCategory = typeof HISTORY_CATEGORIES[number];
+export type HistoryRecord = {
+  id:string; category:HistoryCategory; date:string; author:string; detail:string; requestId?:string; email?:string;
+};
 export type Data = {
   materials: Material[]; suppliers: string[]; entries: Entry[]; shipments: Shipment[]; receipts: Receipt[];
   conversions: Conversion[]; profiles: Profile[]; calendars: Record<string,Calendar>; publications: Publication[];
   holidays?: Holiday[];
   supplierDetails?: Record<string,SupplierDetails>;
-  history: {date: string; author: string; detail: string; requestId?: string; email?: string}[];
+  history: HistoryRecord[];
 };
 
 export function getSupplierDetails(data:Data,name:string) {

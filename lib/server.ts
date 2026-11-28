@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
-import { demoProfile, isProfileActive, normalizeProfileRole, type Data, type Profile } from './model';
+import { demoProfile, isProfileActive, normalizeProfileRole, type Data, type Profile, type HistoryRecord, type HistoryCategory } from './model';
 import { initialData } from './seed';
 import { adminEmail, readSession, type Credentials } from './passwords';
 
@@ -49,9 +50,34 @@ function db() {
   return createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SECRET_KEYS,{auth:{persistSession:false,autoRefreshToken:false}});
 }
 const demoFile = '.data/planejamento.json';
-type StoredData = Omit<Data,'profiles'> & {profiles:(Omit<Profile,'role'> & {role:string})[]};
+type StoredHistory = Omit<HistoryRecord,'id'|'category'> & Partial<Pick<HistoryRecord,'id'|'category'>>;
+type StoredData = Omit<Data,'profiles'|'history'> & {
+  profiles:(Omit<Profile,'role'> & {role:string})[];
+  history:StoredHistory[];
+};
+function legacyHistoryCategory(detail:string):HistoryCategory {
+  if (/^(Registrou envio|Vinculou os envios)/.test(detail)) return 'Envios';
+  if (/^Registrou recebimento/.test(detail)) return 'Recebimentos';
+  if (/^(Publicou programação|Atualizou calendário)/.test(detail)) return 'PDF mensal';
+  if (/^(Redefiniu a senha|(?:Alterou|Cadastrou|Revogou|Desativou|Reativou) (?:o )?acesso)/.test(detail)) return 'Perfis de acesso';
+  if (/^(Alterou|Cadastrou|Excluiu|Reativou|Desativou) (material |fornecedor |conversão |feriado )/.test(detail)) return 'Cadastros';
+  if (/^(Incluiu |Cancelou |Alterou .+ → )/.test(detail)) return 'Programação';
+  return 'Outros';
+}
 function normalizeWorkspace(data:StoredData):Data {
-  return {...data,profiles:data.profiles.map(p=>({...p,role:normalizeProfileRole(p.role) ?? 'partner'}))};
+  const occurrences = new Map<string,number>();
+  const history = data.history.map(record=>{
+    let id = record.id;
+    if (!id) {
+      const fingerprint = createHash('sha256')
+        .update(JSON.stringify([record.date,record.author,record.detail,record.email,record.requestId])).digest('hex');
+      const occurrence = (occurrences.get(fingerprint) ?? 0)+1;
+      occurrences.set(fingerprint,occurrence);
+      id = fingerprint+'-'+occurrence;
+    }
+    return {...record,id,category:record.category ?? legacyHistoryCategory(record.detail)};
+  });
+  return {...data,history,profiles:data.profiles.map(p=>({...p,role:normalizeProfileRole(p.role) ?? 'partner'}))};
 }
 async function local():Promise<StoredData> {
   try { return JSON.parse(await readFile(demoFile,'utf8')) as StoredData; }

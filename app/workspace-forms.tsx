@@ -23,7 +23,7 @@ const catalogOperations = {
   holiday:{editTitle:'Editar feriado',deleteTitle:'Excluir feriado',deleteAction:'deleteHoliday',subject:'o feriado'}
 };
 export type Operation = {id?:string;scope?:Scope;remove?:boolean} & (
-  {kind:Exclude<keyof typeof titles,'setProfileActive'|'setHolidayActive'>} | {kind:'setProfileActive'|'setHolidayActive';id:string;active:boolean}
+  {kind:Exclude<keyof typeof titles,'setProfileActive'|'setHolidayActive'|'clearHistory'>} | {kind:'setProfileActive'|'setHolidayActive';id:string;active:boolean} | {kind:'clearHistory';historyIds:string[]}
 );
 const accessOptions = {
   partner:'Nível 1 - Terceiro',
@@ -165,7 +165,7 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
       else delete input.invoicedQuantity;
     }
     if (kind==='revoke') input.email = id;
-    if (kind==='clearHistory') input.through = id;
+    if (kind==='clearHistory') input.historyIds = operation.historyIds;
     if (kind==='setProfileActive'||kind==='setHolidayActive') input.active = operation.active;
     if (kind==='profile') Object.assign(input,{role,scopes:needsScopes?scopes:[]});
     setSaving(true);
@@ -289,7 +289,9 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
           {kind==='deleteEntry'&&<p>A programação de <strong>{initial?.supplier}</strong> em {initial && dateLabel(initial.date)} será removida também das versões de PDF disponíveis no portal. Exclua os recebimentos vinculados primeiro.</p>}
           {kind==='deleteShipment'&&<p>O envio de <strong>{shipment?.supplier}</strong> em {shipment && dateLabel(shipment.date)} será excluído. Os registros vinculados serão mantidos e ficarão sem o vínculo com esse envio.</p>}
           {kind==='deleteReceipt'&&<p>O recebimento de <strong>{receipt?.supplier}</strong> em {receipt && dateLabel(receipt.date)} será excluído e suas baixas serão estornadas.</p>}
-          {kind==='clearHistory'&&<p>Todo o histórico existente até esta confirmação será apagado. As programações, os envios e os recebimentos serão mantidos.</p>}
+          {kind==='clearHistory'&&<p>{operation.historyIds.length===1
+            ? 'O registro selecionado será apagado do histórico.'
+            : `Os ${operation.historyIds.length} registros selecionados serão apagados do histórico.`}</p>}
           <p>Esta exclusão é definitiva e não gera um novo registro no histórico.</p>
         </>}
         {kind==='cancel'&&<p>Cancelar a programação de {initial?.supplier} em {initial?dateLabel(initial.date):''}? O registro ficará disponível no histórico.</p>}

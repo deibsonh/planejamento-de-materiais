@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { allowed, canManageProfiles, catalogUnit, getCalendar, getSupplierDetails, hasAdministrationAccess, hasOperationalAccess, hasPdfAccess, isHoliday, isProfileActive, listHolidays, MATERIAL_TYPES, normalizeProfileRole, dateLabel, received, round, type Data, type Profile, type Scope, type Allocation, type Conversion, type SupplierDetails } from './model';
+import { allowed, canManageProfiles, catalogUnit, getCalendar, getSupplierDetails, hasAdministrationAccess, hasOperationalAccess, hasPdfAccess, isHoliday, isProfileActive, listHolidays, MATERIAL_TYPES, normalizeProfileRole, dateLabel, received, round, type Data, type HistoryCategory, type Profile, type Scope, type Allocation, type Conversion, type SupplierDetails } from './model';
 import { ForbiddenError, isBootstrapAdmin, UserError } from './server';
 type Input = Record<string, unknown>;
 const value = (input:Input,key:string) => typeof input[key] === 'string' ? String(input[key]).trim() : '';
@@ -73,6 +73,14 @@ const administrationActions = new Set([
   'material','deleteMaterial','supplier','deleteSupplier','conversion','deleteConversion',
   'holiday','setHolidayActive','deleteHoliday'
 ]);
+const historyCategories:Partial<Record<string,HistoryCategory>> = {
+  entry:'Programação',entryMonth:'Programação',cancel:'Programação',
+  shipment:'Envios',duplicate:'Envios',receipt:'Recebimentos',
+  material:'Cadastros',deleteMaterial:'Cadastros',supplier:'Cadastros',deleteSupplier:'Cadastros',
+  conversion:'Cadastros',deleteConversion:'Cadastros',holiday:'Cadastros',setHolidayActive:'Cadastros',deleteHoliday:'Cadastros',
+  profile:'Perfis de acesso',resetPassword:'Perfis de acesso',setProfileActive:'Perfis de acesso',revoke:'Perfis de acesso',
+  calendar:'PDF mensal',publish:'PDF mensal'
+};
 export function apply(data:Data,profile:Profile,input:Input) {
   need(input && typeof input === 'object' && !Array.isArray(input),'Dados de registro inválidos.');
   const action = value(input,'action');
@@ -85,6 +93,14 @@ export function apply(data:Data,profile:Profile,input:Input) {
   if (permanentDeletionActions.has(action)) {
     const key = value(input,'id');
     if (action==='clearHistory') {
+      if (input.historyIds !== undefined) {
+        const ids = input.historyIds;
+        need(Array.isArray(ids) && ids.length && ids.every(id=>typeof id==='string' && id.length>0 && id.length<=80),
+          'Selecione os registros do histórico a excluir.');
+        const selected = new Set(ids);
+        data.history = data.history.filter(record=>!selected.has(record.id));
+        return true;
+      }
       const through = value(input,'through');
       need(Number.isFinite(Date.parse(through)) && new Date(through).toISOString()===through,'Não foi possível identificar o histórico selecionado.');
       data.history = data.history.filter(record=>record.date>through);
@@ -438,6 +454,6 @@ export function apply(data:Data,profile:Profile,input:Input) {
     }
     default: throw new UserError('Operação inválida.');
   }
-  data.history.unshift({date:new Date().toISOString(),author,detail:log,requestId,email:profile.email});
+  data.history.unshift({id,category:historyCategories[action] ?? 'Outros',date:new Date().toISOString(),author,detail:log,requestId,email:profile.email});
   return true;
 }

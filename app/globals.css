@@ -149,9 +149,16 @@ td{padding:8px 13px;border-bottom:1px solid var(--line);color:var(--muted);heigh
 tr:last-child td{border-bottom:0}
 td strong{color:var(--ink);font-weight:675}
 td.empty{text-align:center;color:var(--muted);padding:34px 12px}
-.history-table table{table-layout:fixed;min-width:460px;white-space:normal;overflow-wrap:anywhere}
+.history-table table{table-layout:fixed;min-width:620px;white-space:normal;overflow-wrap:anywhere}
 .history-table th:nth-child(1){width:18%}
-.history-table th:nth-child(2){width:24%}
+.history-table th:nth-child(2){width:20%}
+.history-table th:nth-child(3){width:17%}
+.history-table th.actions-heading{width:65px}
+.history-table th.actions-heading,.history-table td:last-child:has(button){text-align:center}
+.history-filters{align-items:end;padding:0 16px 14px}
+.history-filters label{display:grid;gap:5px;min-width:0;color:var(--muted);font-size:12px;font-weight:650}
+.history-filters select{max-width:min(275px,100%)}
+.history-filters input{font:inherit;min-height:36px;padding:7px 9px;border:1px solid var(--control-border);border-radius:7px;background:var(--paper);color:var(--ink)}
 .history-table td{line-height:1.45}
 .date-cell{font-variant-numeric:tabular-nums}
 .date-cell small{display:block;margin-top:3px;font-size:10px}
