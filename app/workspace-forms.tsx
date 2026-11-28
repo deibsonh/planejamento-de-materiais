@@ -220,14 +220,14 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
           <div className="form-grid">
             {kind==='receipt'&&<Field label="Data real do recebimento"><Input name="date" type="date" initial={receipt?.date ?? today()}/></Field>}
             <Field label={kind==='receipt'?'Quantidade recebida':'Quantidade na nota fiscal'}><input value={quantity} onChange={e=>setQuantity(e.target.value)} inputMode="decimal" placeholder="0,000" required/></Field>
-            {kind==='shipment' ? <Field label="Unidade na nota fiscal"><Input name="unit" initial={shipment?.unit} placeholder="Informe a unidade"/></Field> :
+            {kind==='shipment' ? <Field label="Unidade na nota fiscal"><CatalogUnitSelect initial={shipment?.unit}/></Field> :
               <Field label="Unidade"><select value={actualUnit} onChange={e=>setUnit(e.target.value)} required><option value="">Selecione</option>{unitOptions.map(u=><option key={u}>{u}</option>)}</select></Field>}
             <Field label={kind==='shipment'?'Número da nota fiscal':'Nota fiscal'}><input name="nf" value={nf} onChange={e=>setNf(e.target.value)} maxLength={180} placeholder="Opcional"/></Field>
             <Field label="Número do frete"><Input name="freight" initial={movement?.freight} optional placeholder="Opcional"/></Field>
             {kind==='shipment'&&<>
               <Field label="Observações" wide><textarea name="notes" rows={3} maxLength={1000} defaultValue={shipment?.notes} placeholder="Opcional"/></Field>
               <Field label="Data de entrega"><Input name="date" type="date" initial={shipment ? deliveryDate(shipment) : today()}/></Field>
-              <Field label="Registrado por"><input value={shipment?.author ?? profile.name} readOnly/></Field>
+              <Field label="Registrado por"><input className="delivery-author" value={shipment?.author ?? profile.name} disabled/></Field>
             </>}
             {kind==='receipt'&&<>
               {nf.trim()&&<Field label={actualUnit?'Quantidade na NF ('+actualUnit+')':'Quantidade na NF'}><input name="invoicedQuantity" defaultValue={editingReceipt?.invoicedQuantity===undefined ? undefined : quantityInputValue(editingReceipt.invoicedQuantity)} inputMode="decimal" placeholder="Opcional"/></Field>}
@@ -314,9 +314,8 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
           {kind==='clearHistory'&&<p>{operation.historyIds.length===1
             ? 'O registro selecionado será apagado do histórico.'
             : `Os ${operation.historyIds.length} registros selecionados serão apagados do histórico.`}</p>}
-          <p>{kind==='deleteShipmentLogged'||kind==='deleteReceiptLogged'
-            ? 'A exclusão será registrada no histórico.'
-            : 'Esta exclusão é definitiva e não gera um novo registro no histórico.'}</p>
+          {kind!=='deleteShipmentLogged'&&kind!=='deleteReceiptLogged'&&
+            <p>Esta exclusão é definitiva e não gera um novo registro no histórico.</p>}
         </>}
         {kind==='cancel'&&<p>Cancelar a programação de {initial?.supplier} em {initial?dateLabel(initial.date):''}? O registro ficará disponível no histórico.</p>}
         {kind==='publish'&&<p>Salvar uma versão de {monthLabel(month)} para divulgação? Ela preservará as quantidades, os materiais e o calendário atuais.</p>}

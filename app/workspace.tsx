@@ -639,7 +639,7 @@ export default function Workspace() {
             renderRow={record=><tr key={record.id}>
               <td>{timeLabel(record.date)}</td><td><strong>{record.author}</strong></td><td>{record.category}</td><td>{record.detail}</td>
               {canDeletePermanently&&<RowActions label={`Ações do registro de ${record.author} em ${timeLabel(record.date)}`}>
-                <button type="button" className="danger" onClick={()=>setOperation({kind:'clearHistory',historyIds:[record.id]})}>Excluir entrada do histórico</button>
+                <button type="button" className="danger" onClick={()=>setOperation({kind:'clearHistory',historyIds:[record.id]})}>Excluir histórico</button>
               </RowActions>}
             </tr>}/>
         </section>}
