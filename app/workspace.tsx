@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowDownToLine, ArrowLeftRight, ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, CirclePause, CirclePlay, Clock3, Container, Ellipsis, FileText, Flame, FlaskConical, Fuel, Gem, Grid3x3, Grip, History, Hourglass, KeyRound, LayoutDashboard, LogOut, Menu, Mountain, Package, PackageCheck, Pencil, Plus, Search, Settings2, Shapes, SlidersHorizontal, SprayCan, Trash2, TreePine, Truck, Users, X, type LucideIcon } from 'lucide-react';
-import { dateLabel, getCalendar, fmt, getSupplierDetails, HISTORY_CATEGORIES, hasAdministrationAccess, hasOperationalAccess, hasPdfAccess, isProfileActive, listHolidays, monthLabel, received, round, currentMonth, workdays, type Data, type Entry, type HistoryRecord, type MaterialType, type Profile } from '@/lib/model';
+import { dateLabel, getCalendar, fmt, getSupplierDetails, HISTORY_CATEGORIES, hasAdministrationAccess, hasOperationalAccess, hasPdfAccess, isProfileActive, listHolidays, monthLabel, received, round, currentMonth, workdays, type Data, type Entry, type MaterialType, type Profile } from '@/lib/model';
 import { demoMonth } from '@/lib/seed';
 import { OperationForm, roleLabel, type Operation } from './workspace-forms';
 
@@ -34,7 +34,7 @@ const panelDescriptions: Record<Tab,string> = {
 const blank = '—';
 const timeLabel = (iso:string) => new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'});
 const historyDayFormatter = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'});
-const historyAuthor = (record:HistoryRecord) => record.email ? 'email:'+record.email : 'name:'+record.author;
+const normalizeSearch = (value:string) => value.trim().normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('pt-BR');
 const emptyHistoryFilters = {from:'',to:'',author:'',category:''};
 const nonce = (month:string, diff:number) => {
   const [y,m] = month.split('-').map(Number);
@@ -91,6 +91,40 @@ function PaginatedTable<T>({label,columns,items,emptyLabel,renderRow,newestFirst
       <span aria-live="polite">Página {page} de {pageCount}</span>
       <button type="button" className="button" disabled={page===pageCount} onClick={()=>setPage(page+1)}>Próxima</button>
     </nav>
+  </>;
+}
+function HistoryPeriodFilter({from,to,onChange}:{from:string;to:string;onChange:(from:string,to:string)=>void}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [draft,setDraft] = useState({from,to});
+  const label = from && to ? `${dateLabel(from)} a ${dateLabel(to)}` : 'Selecione um período';
+  return <>
+    <button type="button" className="button history-period" aria-haspopup="dialog" onClick={()=>{
+      setDraft({from,to});
+      dialog.current?.showModal();
+    }}><CalendarDays size={15} aria-hidden="true"/>{label}<ChevronDown size={14} aria-hidden="true"/></button>
+    <dialog ref={dialog} className="dialog history-period-dialog" aria-labelledby="history-period-title">
+      <form className="dialog-content" onSubmit={event=>{
+        event.preventDefault();
+        onChange(draft.from,draft.to);
+        dialog.current?.close();
+      }}>
+        <div className="dialog-head"><h2 id="history-period-title">Selecione um período</h2>
+          <button type="button" className="icon-button" aria-label="Fechar" onClick={()=>dialog.current?.close()}><X size={18}/></button>
+        </div>
+        <div className="form-content form-grid">
+          <label>De<input type="date" value={draft.from} required onChange={e=>setDraft({...draft,from:e.target.value})}/></label>
+          <label>Até<input type="date" value={draft.to} min={draft.from || undefined} required onChange={e=>setDraft({...draft,to:e.target.value})}/></label>
+        </div>
+        <div className="dialog-footer">
+          {from && to && <button type="button" className="text-button history-clear-period" onClick={()=>{
+            onChange('','');
+            dialog.current?.close();
+          }}>Remover período</button>}
+          <button type="button" className="button" onClick={()=>dialog.current?.close()}>Cancelar</button>
+          <button type="submit" className="button primary">Aplicar</button>
+        </div>
+      </form>
+    </dialog>
   </>;
 }
 function CatalogActions({operation,label,onOpen,children}:{operation:Operation;label:string;onOpen:(value:Operation)=>void;children?:ReactNode}) {
@@ -355,14 +389,11 @@ export default function Workspace() {
     </Table>;
   }
   const history = tab==='Histórico' ? data.history : [];
-  const historyAuthors = new Map<string,string>();
-  for (const record of history) {
-    const key = historyAuthor(record);
-    if (!historyAuthors.has(key)) historyAuthors.set(key,record.email ? `${record.author} · ${record.email}` : record.author);
-  }
-  const historyFiltered = Object.values(historyFilters).some(Boolean);
+  const authorQuery = normalizeSearch(historyFilters.author);
+  const historyFiltered = Boolean(historyFilters.from || historyFilters.to || authorQuery || historyFilters.category);
   const filteredHistory = history.filter(record=>{
-    if (historyFilters.author && historyAuthor(record)!==historyFilters.author) return false;
+    if (authorQuery && !normalizeSearch(record.author).includes(authorQuery) &&
+      !normalizeSearch(record.email ?? '').includes(authorQuery)) return false;
     if (historyFilters.category && record.category!==historyFilters.category) return false;
     if (!historyFilters.from && !historyFilters.to) return true;
     const day = historyDayFormatter.format(new Date(record.date));
@@ -550,17 +581,14 @@ export default function Workspace() {
             </button>}
           </div>
           <div className="tools history-filters" role="group" aria-label="Filtros do histórico">
-            <label>Data inicial<input type="date" value={historyFilters.from} max={historyFilters.to || undefined} onChange={e=>setHistoryFilter('from',e.target.value)}/></label>
-            <label>Data final<input type="date" value={historyFilters.to} min={historyFilters.from || undefined} onChange={e=>setHistoryFilter('to',e.target.value)}/></label>
-            <label>Responsável<select value={historyFilters.author} onChange={e=>setHistoryFilter('author',e.target.value)}>
-              <option value="">Todos os responsáveis</option>
-              {[...historyAuthors].sort((a,b)=>a[1].localeCompare(b[1],'pt-BR')).map(([key,name])=><option key={key} value={key}>{name}</option>)}
-            </select></label>
-            <label>Tipo<select value={historyFilters.category} onChange={e=>setHistoryFilter('category',e.target.value)}>
-              <option value="">Todos os tipos</option>
-              {HISTORY_CATEGORIES.map(category=><option key={category}>{category}</option>)}
-            </select></label>
-            {historyFiltered&&<button type="button" className="button" onClick={()=>setHistoryFilters(emptyHistoryFilters)}>Limpar filtros</button>}
+            <HistoryPeriodFilter from={historyFilters.from} to={historyFilters.to}
+              onChange={(from,to)=>setHistoryFilters(filters=>({...filters,from,to}))}/>
+            <input type="search" aria-label="Responsável" placeholder="Buscar responsável" value={historyFilters.author}
+              onChange={e=>setHistoryFilter('author',e.target.value)}/>
+            <select aria-label="Tipo" value={historyFilters.category} onChange={e=>setHistoryFilter('category',e.target.value)}>
+              <option value="">Tipo: todos</option>
+              {HISTORY_CATEGORIES.map(category=><option key={category} value={category}>Tipo: {category}</option>)}
+            </select>
           </div>
           <PaginatedTable key={JSON.stringify(historyFilters)} label="histórico"
             columns={['Data e hora','Responsável','Tipo','Alteração',...(canDeletePermanently?['Ações']:[])]}
