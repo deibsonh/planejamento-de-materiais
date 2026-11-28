@@ -170,7 +170,7 @@ export default function Workspace() {
       setToast(input.active ? 'Acesso reativado.' : 'Acesso desativado.');
       return;
     }
-    const deleted = ['deleteMaterial','deleteSupplier','deleteConversion','deleteHoliday'].some(action=>action===input.action);
+    const deleted = ['deleteMaterial','deleteSupplier','deleteConversion','deleteHoliday','deleteEntry','deleteShipment','deleteReceipt','clearHistory'].some(action=>action===input.action);
     setToast(deleted?'Registro excluído com sucesso.':input.action==='entryMonth'?'Programação salva com sucesso.':'Alteração salva com sucesso.');
   }
 
@@ -274,6 +274,7 @@ export default function Workspace() {
     </main>;
   }
   const operational = hasOperationalAccess(profile);
+  const canDeletePermanently = state.canManageProfiles;
   const visiblePlanningMenu = planningMenu.filter(({label})=>canViewTab(label,state));
   const visibleAdministrationMenu = administrationMenu.filter(({label})=>canViewTab(label,state));
   const materials = new Map(data.materials.map(m=>[m.id,m]));
@@ -336,13 +337,14 @@ export default function Workspace() {
           <td><Badge label={label} tone={planningStatuses[label].tone}/></td>
           {operational && <td className="row-actions"><button className="icon-button" aria-label="Ações da programação" onClick={event=>{
             const rect = event.currentTarget.getBoundingClientRect();
-            setMenuPosition({top:Math.min(rect.bottom,window.innerHeight-119),right:window.innerWidth-rect.right});
+            setMenuPosition({top:Math.min(rect.bottom,window.innerHeight-(canDeletePermanently?155:119)),right:window.innerWidth-rect.right});
             setMenuId(menuId===e.id?'':e.id);
           }}><Ellipsis size={18}/></button>
             {menuId===e.id && <div className="pop row-pop" style={menuPosition}>
               <button onClick={()=>{setOperation({kind:'entry',id:e.id});setMenuId('');}} disabled={e.canceled||e.closed}>Editar programação</button>
               <button onClick={()=>{setOperation({kind:'receipt',id:e.id});setMenuId('');}} disabled={e.canceled||e.closed||actual>=e.quantity}>Registrar recebimento</button>
               <button className="danger" onClick={()=>{setOperation({kind:'cancel',id:e.id});setMenuId('');}} disabled={e.canceled||e.closed||actual>=e.quantity}>Cancelar programação</button>
+              {canDeletePermanently&&<button className="danger" onClick={()=>{setOperation({kind:'deleteEntry',id:e.id});setMenuId('');}}>Excluir definitivamente</button>}
             </div>}</td>}
         </tr>;
       })}
@@ -390,7 +392,7 @@ export default function Workspace() {
           <div className="panel-footer"><span>{visibleEntries.length} de {ordered.length} registros</span>{tab==='Visão geral'&& <button className="text-button" onClick={()=>go('Programação')}>Ver programação completa <ArrowRight size={15}/></button>}</div>
         </section>}
         {tab==='Envios'&& <section className="panel"><div className="panel-heading"><h2>Registros de envio</h2>{toolbar()}</div>
-          <Table columns={['Expedição','Previsão','Material','Fornecedor','Quantidade','NF','Registrado por','Conferência',...(operational?['']:[])]} empty={!shipments.filter(matching).length}>
+          <Table columns={['Expedição','Previsão','Material','Fornecedor','Quantidade','NF','Registrado por','Conferência',...(operational?['Ações']:[])]} empty={!shipments.filter(matching).length}>
             {shipments.filter(matching).slice().reverse().map(s=>{
               const links = data.receipts.filter(r=>r.shipment===s.id);
               const actual = round(links.reduce((sum,r)=>sum+r.converted,0));
@@ -399,11 +401,19 @@ export default function Workspace() {
                 difference === null ? ['Recebimento vinculado','blue'] : difference===0 ? ['Conferido','green'] :
                 [`${fmt(Math.abs(difference))} ${materials.get(s.material)?.unit} a ${difference>0?'mais':'menos'}`,'amber'];
               return <tr key={s.id}><td>{dateLabel(s.date)}</td><td>{s.arrival?dateLabel(s.arrival):blank}</td><td><strong>{materials.get(s.material)?.name}</strong></td><td>{s.supplier}</td><td>{fmt(s.quantity)} {s.unit}</td><td>{s.nf||blank}</td><td>{s.author}</td><td><Badge label={comparison[0]} tone={comparison[1]}/></td>
-              {operational && <td><button className="text-button" disabled={!!s.duplicateOf} onClick={()=>setOperation({kind:'duplicate',id:s.id})}><ArrowLeftRight size={15}/> Vincular</button></td>}</tr>;})}
+              {operational && <td><div className="table-buttons">
+                <button className="text-button" disabled={!!s.duplicateOf} onClick={()=>setOperation({kind:'duplicate',id:s.id})}><ArrowLeftRight size={15}/> Vincular</button>
+                {canDeletePermanently&&<button type="button" className="icon-button danger" title="Excluir envio definitivamente" aria-label="Excluir envio definitivamente"
+                  onClick={()=>setOperation({kind:'deleteShipment',id:s.id})}><Trash2 size={15} aria-hidden="true"/></button>}
+              </div></td>}</tr>;})}
           </Table></section>}
         {tab==='Recebimentos'&& <section className="panel"><div className="panel-heading"><h2>Registros de recebimento</h2>{toolbar()}</div>
-          <Table columns={['Recebido em','Material','Fornecedor','Quantidade','Convertida','NF','Frete','']} empty={!receipts.filter(matching).length}>
-            {receipts.filter(matching).slice().reverse().map(r=><tr key={r.id}><td>{dateLabel(r.date)}</td><td><strong>{materials.get(r.material)?.name}</strong></td><td>{r.supplier}</td><td>{fmt(r.quantity)} {r.unit}</td><td>{fmt(r.converted)} {materials.get(r.material)?.unit}</td><td>{r.nf||'Sem NF'}</td><td>{r.freight||blank}</td><td><button className="text-button" onClick={()=>setOperation({kind:'receiptDetails',id:r.id})}>Detalhes <ChevronRight size={14}/></button></td></tr>)}
+          <Table columns={['Recebido em','Material','Fornecedor','Quantidade','Convertida','NF','Frete','Ações']} empty={!receipts.filter(matching).length}>
+            {receipts.filter(matching).slice().reverse().map(r=><tr key={r.id}><td>{dateLabel(r.date)}</td><td><strong>{materials.get(r.material)?.name}</strong></td><td>{r.supplier}</td><td>{fmt(r.quantity)} {r.unit}</td><td>{fmt(r.converted)} {materials.get(r.material)?.unit}</td><td>{r.nf||'Sem NF'}</td><td>{r.freight||blank}</td><td><div className="table-buttons">
+              <button className="text-button" onClick={()=>setOperation({kind:'receiptDetails',id:r.id})}>Detalhes <ChevronRight size={14}/></button>
+              {canDeletePermanently&&<button type="button" className="icon-button danger" title="Excluir recebimento definitivamente" aria-label="Excluir recebimento definitivamente"
+                onClick={()=>setOperation({kind:'deleteReceipt',id:r.id})}><Trash2 size={15} aria-hidden="true"/></button>}
+            </div></td></tr>)}
           </Table></section>}
         {tab==='PDF mensal'&&canViewTab(tab,state)&& <div className="stack">
           <section className="panel"><div className="panel-heading"><div><h2>Programação para os setores</h2><p>O PDF inclui as quantidades programadas do mês.</p></div><div className="tools">
@@ -512,7 +522,10 @@ export default function Workspace() {
           </section>
         </>}
         {tab==='Histórico'&&canViewTab(tab,state)&& <section className="panel history-table">
-          <div className="panel-heading"><h2>Alterações registradas</h2></div>
+          <div className="panel-heading"><h2>Alterações registradas</h2>
+            {canDeletePermanently&&<button type="button" className="button danger" disabled={!data.history.length}
+              onClick={()=>setOperation({kind:'clearHistory',id:data.history[0]?.date})}><Trash2 size={15} aria-hidden="true"/> Limpar histórico</button>}
+          </div>
           <PaginatedTable label="histórico" columns={['Data e hora','Responsável','Alteração']} items={data.history} newestFirst
             renderRow={(h,i)=><tr key={h.requestId ? JSON.stringify([h.email,h.requestId]) : h.date+i}><td>{timeLabel(h.date)}</td><td><strong>{h.author}</strong></td><td>{h.detail}</td></tr>}/>
         </section>}

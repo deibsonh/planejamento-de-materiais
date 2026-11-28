@@ -3,7 +3,14 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { ArrowRight, Plus, Trash2, X } from 'lucide-react';
 import { allowed, calendarDays, catalogUnit, dateLabel, getCalendar, fmt, getSupplierDetails, hasOperationalAccess, listHolidays, MATERIAL_TYPES, monthLabel, received, REGISTERED_UNITS, round, type Data, type Profile, type Scope } from '@/lib/model';
 
+const permanentDeletionTitles = {
+  deleteEntry:'Excluir programação definitivamente',
+  deleteShipment:'Excluir envio definitivamente',
+  deleteReceipt:'Excluir recebimento definitivamente',
+  clearHistory:'Limpar histórico'
+} as const;
 const titles = {
+  ...permanentDeletionTitles,
   entry:'Editar programação', entryMonth:'Nova programação', receipt:'Registrar recebimento', shipment:'Registrar envio', cancel:'Cancelar programação',
   material:'Novo material', supplier:'Novo fornecedor', conversion:'Cadastrar conversão', profile:'Configurar perfil',
   calendar:'Calendário do mês', holiday:'Novo feriado', publish:'Salvar versão da programação', duplicate:'Vincular envios',
@@ -109,7 +116,8 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
   const title = catalog && deleting ? catalog.deleteTitle : catalog && (id || previousScope) ? catalog.editTitle :
     kind==='profile'&&existingProfile ? 'Editar perfil' : kind==='setProfileActive'&&operation.active ? 'Reativar acesso' :
     kind==='setHolidayActive'&&operation.active ? 'Reativar feriado' : titles[kind];
-  const submitLabel = deleting ? 'Confirmar exclusão' : kind==='cancel'||kind==='revoke'||kind==='setProfileActive'||kind==='setHolidayActive' ? title :
+  const permanentDeletion = Object.hasOwn(permanentDeletionTitles,kind);
+  const submitLabel = deleting || permanentDeletion ? 'Confirmar exclusão' : kind==='cancel'||kind==='revoke'||kind==='setProfileActive'||kind==='setHolidayActive' ? title :
     kind==='entryMonth' ? 'Salvar programação' : 'Salvar registro';
   const catalogName = kind==='material' && existingMaterial ? `${existingMaterial.name} (${existingMaterial.id})` :
     kind==='supplier' ? id : existingHoliday ? `${existingHoliday.description} (${dateLabel(existingHoliday.date)})` :
@@ -157,6 +165,7 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
       else delete input.invoicedQuantity;
     }
     if (kind==='revoke') input.email = id;
+    if (kind==='clearHistory') input.through = id;
     if (kind==='setProfileActive'||kind==='setHolidayActive') input.active = operation.active;
     if (kind==='profile') Object.assign(input,{role,scopes:needsScopes?scopes:[]});
     setSaving(true);
@@ -276,6 +285,13 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
             ? `${existingHoliday.date==='02-29' ? '2000' : month.slice(0,4)}-${existingHoliday.date}` : existingHoliday?.date}/></Field>
           <Field label="Nome do feriado" wide><Input name="description" placeholder="Descreva o feriado" initial={existingHoliday?.description}/></Field>
         </div>}
+        {permanentDeletion&&<>
+          {kind==='deleteEntry'&&<p>A programação de <strong>{initial?.supplier}</strong> em {initial && dateLabel(initial.date)} será removida também das versões de PDF disponíveis no portal. Exclua os recebimentos vinculados primeiro.</p>}
+          {kind==='deleteShipment'&&<p>O envio de <strong>{shipment?.supplier}</strong> em {shipment && dateLabel(shipment.date)} será excluído. Os registros vinculados serão mantidos e ficarão sem o vínculo com esse envio.</p>}
+          {kind==='deleteReceipt'&&<p>O recebimento de <strong>{receipt?.supplier}</strong> em {receipt && dateLabel(receipt.date)} será excluído e suas baixas serão estornadas.</p>}
+          {kind==='clearHistory'&&<p>Todo o histórico existente até esta confirmação será apagado. As programações, os envios e os recebimentos serão mantidos.</p>}
+          <p>Esta exclusão é definitiva e não gera um novo registro no histórico.</p>
+        </>}
         {kind==='cancel'&&<p>Cancelar a programação de {initial?.supplier} em {initial?dateLabel(initial.date):''}? O registro ficará disponível no histórico.</p>}
         {kind==='publish'&&<p>Salvar uma versão de {monthLabel(month)} para divulgação? Ela preservará as quantidades, os materiais e o calendário atuais.</p>}
         {kind==='resetPassword'&&<>
@@ -305,7 +321,7 @@ export function OperationForm({operation,profile,data,month,demo,onClose,onSave}
           : 'Selecione o fornecedor e o material para preencher as quantidades'}</output>}
         {kind==='holiday'&&!deleting&&annualHoliday&&<small className="holiday-note">O ano escolhido não afeta a recorrência.</small>}
         <button type="button" className="button" disabled={saving} onClick={onClose}>{readonly?'Fechar':'Cancelar'}</button>
-        {!readonly&&<button type="submit" className="button primary" disabled={saving}>{saving ? deleting?'Excluindo…':'Salvando…' : submitLabel}</button>}</div>
+        {!readonly&&<button type="submit" className="button primary" disabled={saving}>{saving ? deleting||permanentDeletion?'Excluindo…':'Salvando…' : submitLabel}</button>}</div>
     </form>
   </dialog>;
 }

@@ -68,6 +68,7 @@ function describeConversion(conversion:Conversion) {
   return `${material} / ${supplier} · ${unit} ${operation==='divide' ? '÷' : '×'} ${factor}`;
 }
 export const profileActions = new Set(['profile','resetPassword','setProfileActive','revoke']);
+const permanentDeletionActions = new Set(['deleteEntry','deleteShipment','deleteReceipt','clearHistory']);
 const administrationActions = new Set([
   'material','deleteMaterial','supplier','deleteSupplier','conversion','deleteConversion',
   'holiday','setHolidayActive','deleteHoliday'
@@ -75,11 +76,45 @@ const administrationActions = new Set([
 export function apply(data:Data,profile:Profile,input:Input) {
   need(input && typeof input === 'object' && !Array.isArray(input),'Dados de registro inválidos.');
   const action = value(input,'action');
-  if ((profileActions.has(action) && !canManageProfiles(profile)) ||
+  if (((profileActions.has(action) || permanentDeletionActions.has(action)) && !canManageProfiles(profile)) ||
       (administrationActions.has(action) && !hasAdministrationAccess(profile)) ||
       ((action === 'calendar' || action === 'publish') && !hasPdfAccess(profile)) ||
       (action !== 'shipment' && !hasOperationalAccess(profile))) {
     throw new ForbiddenError('Seu perfil não pode realizar essa operação.');
+  }
+  if (permanentDeletionActions.has(action)) {
+    const key = value(input,'id');
+    if (action==='clearHistory') {
+      const through = value(input,'through');
+      need(Number.isFinite(Date.parse(through)) && new Date(through).toISOString()===through,'Não foi possível identificar o histórico selecionado.');
+      data.history = data.history.filter(record=>record.date>through);
+      return true;
+    }
+    need(key,'Selecione o registro a excluir.');
+    switch (action) {
+      case 'deleteEntry':
+        need(!data.receipts.some(receipt=>receipt.allocations.some(allocation=>allocation.entry===key)),
+          'Exclua os recebimentos vinculados antes de excluir esta programação.');
+        data.entries = data.entries.filter(entry=>entry.id!==key);
+        data.publications = data.publications.map(publication=>({...publication,entries:publication.entries.filter(entry=>entry.id!==key)}));
+        break;
+      case 'deleteShipment':
+        data.shipments = data.shipments.filter(shipment=>shipment.id!==key)
+          .map(shipment=>shipment.duplicateOf===key?{...shipment,duplicateOf:undefined}:shipment);
+        data.receipts = data.receipts.map(receipt=>receipt.shipment===key?{...receipt,shipment:''}:receipt);
+        break;
+      case 'deleteReceipt': {
+        const closingEntries = new Set(data.receipts.find(receipt=>receipt.id===key)?.allocations.filter(allocation=>allocation.close).map(allocation=>allocation.entry));
+        data.receipts = data.receipts.filter(receipt=>receipt.id!==key);
+        for (const entry of data.entries) {
+          if (closingEntries.has(entry.id) && !data.receipts.some(receipt=>receipt.allocations.some(allocation=>allocation.entry===entry.id && allocation.close))) {
+            entry.closed = false;
+          }
+        }
+        break;
+      }
+    }
+    return true;
   }
   const requestId = value(input,'requestId');
   if (requestId && data.history.some(h=>h.requestId===requestId && h.email===profile.email)) return false;
